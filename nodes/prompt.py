@@ -63,41 +63,21 @@ class RemoveSubtags:
             if match := re.search(r"^\(([^()]+):([-0-9. ]+)\)$", tag):
                 # Example: (cat:1.20)
                 tag, weight = match.groups()
-                tag_with_weight = f"({tag}:{float(weight):.2f})"
-            if match := re.search(r"^\(([^()]+):([0-9. ]+):([0-9. ]+)\)$", tag):
+            elif match := re.search(r"^\(([^()]+):([0-9. ]+):([0-9. ]+)\)$", tag):
                 # Example: (cat:1.20:1.30)
                 tag, weight_s, weight_e = match.groups()
-                tag_with_weight = f"({tag}:{float(weight_s):.2f}:{float(weight_e):.2f})"
             elif re.match(r"^[^\(\[]", tag):
                 # Example: cat
-                tag_with_weight = f"({tag}:1.00)"
-            elif re.match(r"^\(+", tag):
-                # Example: (cat) -> (cat:1.10), ((cat)) -> (cat:1.21)
-                def paren_replacer(match):
-                    n = len(match.group(1))
-                    tag = match.group(2)
-                    weight = 1.1**n
-                    return f"({tag}:{float(weight):.2f})"
-
-                tag_with_weight = re.sub(
-                    r"^(\(+)([^()\[\]:]+)(\)+)$", paren_replacer, tag
-                )
-            elif re.match(r"^\[+", tag):
-                # Example: [cat] -> (cat:0.90), [[cat]] -> (cat:0.81)
-                def bracket_replacer(match):
-                    n = len(match.group(1))
-                    tag = match.group(2)
-                    weight = 0.9**n
-                    return f"({tag}:{float(weight):.2f})"
-
-                tag_with_weight = re.sub(
-                    r"^(\[+)([^()\[\]:]+)(\]+)$", bracket_replacer, tag
-                )
+                pass
+            elif match := re.search(r"^(\(+)(.+)(\)+)$", tag):
+                # Example: (cat), ((cat))
+                tag = match.group(2)
+            elif match := re.search(r"^(\[+)(.+)(\]+)$", tag):
+                # Example: [cat], [[cat]]
+                tag = match.group(2)
             else:
-                # Example: (cat:1.20:1.30:1.40)
                 logger.warning(f"Unexpected tag format: {tag}")
-                tag_with_weight = tag
-            return tag_with_weight
+            return tag
 
         # 1. Split tokens by BREAK
         groups = text.split("BREAK")
@@ -109,7 +89,9 @@ class RemoveSubtags:
             original_tags = [t for t in group.split(",") if t.strip()]
             comp_tags = [(idx, normalize_tag(t)) for idx, t in enumerate(original_tags)]
             valid_idxs = set()
-            for idx, tag in sorted(comp_tags, key=lambda x: len(x[1]), reverse=True):
+            for idx, tag in sorted(
+                comp_tags, key=lambda x: (len(x[1]), -x[0]), reverse=True
+            ):
                 if not any(tag in comp_tags[valid_idx][1] for valid_idx in valid_idxs):
                     valid_idxs.add(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
