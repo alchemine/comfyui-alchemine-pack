@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-alchemine-pack"
 description = "Custom nodes pack for ComfyUI"
-version = "1.0.0"
+version = "0.1.0"
 license = "MIT"
 
 [project.urls]
