@@ -30,8 +30,8 @@ class RemoveSubtags:
     """
 
     INPUT_TYPES = lambda: {"required": {"text": ("STRING", {"forceInput": True})}}
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("text",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("processed_text", "removed_tags")
     FUNCTION = "execute"
     CATEGORY = "AlcheminePack/Prompt"
 
@@ -83,6 +83,7 @@ class RemoveSubtags:
         groups = text.split("BREAK")
 
         # 2. Remove all subtags from each group
+        removed_tags = []
         new_groups = []
         for group in groups:
             # Ignore empty tags
@@ -96,7 +97,14 @@ class RemoveSubtags:
                     valid_idxs.add(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
             new_groups.append(new_group)
+            removed_tags.extend(
+                [
+                    original_tags[idx].strip()
+                    for idx in range(len(original_tags))
+                    if idx not in valid_idxs
+                ]
+            )
 
         # 3. Join groups by BREAK
         new_text = "BREAK".join(new_groups)
-        return (new_text,)
+        return (new_text, removed_tags)
