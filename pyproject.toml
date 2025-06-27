@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-alchemine-pack"
+description = "Custom nodes pack for ComfyUI"
+version = "1.0.0"
+license = "MIT"
+
+[project.urls]
+Repository = "https://github.com/alchemine/comfyui-alchemine-pack"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "alchemine"
+DisplayName = "ComfyUI-Alchemine-Pack"
+Icon = ""
