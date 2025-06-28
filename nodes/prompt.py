@@ -5,64 +5,208 @@ from pathlib import Path
 from functools import wraps
 
 
-logger = logging.getLogger(__name__)
+#################################################################
+# Logger setup
+#################################################################
+ROOT_DIR = Path(__file__).parent.parent.parent
 
 
+def get_logger(name: str = __file__, level: int = logging.WARNING):
+    class RootNameFormatter(logging.Formatter):
+        def format(self, record):
+            record.name = str(Path(record.name).relative_to(ROOT_DIR))
+            return super().format(record)
+
+    logger = logging.getLogger(name)
+    logger.handlers.clear()
+    handler = logging.StreamHandler()
+    formatter = RootNameFormatter(
+        "[%(asctime)s] [%(levelname)s] %(name)s:%(lineno)d: %(message)s"
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    return logger
+
+
+logger = get_logger()
+
+
+#################################################################
+# Utility functions
+#################################################################
 def exception_handler(func):
+    """Handle unexpected exceptions in a function."""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception:
-            logger.error(f"Unexpected error in {func.__name__}", exc_info=True)
+            logger.error(f"# Unexpected error in '{func.__name__}'", exc_info=True)
             raise
 
     return wrapper
 
 
-class ProcessTags:
-    """Process tags from a prompt."""
+def log_prompt(func):
+    """Log prompt input and output in a Unicode box table with class name, showing all lines. Now uses thinner lines, adds Node row, and prevents prompt truncation with word wrapping."""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        col_width1, col_width2 = [10, 100]
+
+        def format_multiline(label: str, text: str) -> str:
+            lines = text.splitlines() or [""]
+            out = []
+            first_row = True
+            for line in lines:
+                wrapped = textwrap.wrap(line, width=col_width2) or [""]
+                for i, wline in enumerate(wrapped):
+                    if first_row and i == 0:
+                        row = f"│ {label:<{col_width1-2}} │ {wline.ljust(col_width2)} │"
+                    else:
+                        row = f"│ {'':<{col_width1-2}} │ {wline.ljust(col_width2)} │"
+                    out.append(row)
+                    first_row = False
+            return "\n".join(out)
+
+        # Prepare inputs
+        node_label = args[0].__name__
+        input_val = args[1]
+        result = func(*args, **kwargs)
+        output_val = result[0]
+
+        # NOTE. 2: space for tags
+        top = f"┌{'─'*col_width1}┬{'─'*(2+col_width2)}┐"
+        mid = f"├{'─'*col_width1}┼{'─'*(2+col_width2)}┤"
+        bot = f"└{'─'*col_width1}┴{'─'*(2+col_width2)}┘"
+
+        # Prepare table content
+        node_row = format_multiline("Node", node_label)
+        before = format_multiline("Before", input_val)
+        after = format_multiline("After", output_val)
+        if len(result) > 1:
+            filtered_tags = result[1]
+            filtered = format_multiline("Filtered", filtered_tags)
+            contents = [node_row, before, after, filtered]
+        else:
+            contents = [node_row, before, after]
+
+        # Log
+        content = f"\n{mid}\n".join(contents)
+        table = f"{top}\n{content}\n{bot}"
+        logger.debug(f"\n{table}")
+        return result
+
+    return wrapper
+
+
+#################################################################
+# Base class
+#################################################################
+class BasePrompt:
+    """Base class for prompt processing.
+
+    This class provides a base class for prompt processing."""
+
+    @staticmethod
+    def normalize_tag(tag: str) -> str:
+        """Normalize tag with 2 decimal places.
+
+        Examples:
+            Input: cat
+            Output: (cat:1.00)
+
+            Input: (cat:1.2)
+            Output: (cat:1.20)
+
+            Input: ((cat))
+            Output: (cat:1.21)
+
+            Input: [cat]
+            Output: (cat:0.90)
+
+            Input: [[cat]]
+            Output: (cat:0.81)
+
+            Input: (cat:1.2:1.3)
+            Output: (cat:1.20:1.30)
+        """
+        tag = tag.strip()
+        if match := re.search(r"^\(([^()]+):([-0-9. ]+)\)$", tag):
+            # Example: (cat:1.20)
+            tag, weight = match.groups()
+        elif match := re.search(r"^\(([^()]+):([0-9. ]+):([0-9. ]+)\)$", tag):
+            # Example: (cat:1.20:1.30)
+            tag, weight_s, weight_e = match.groups()
+        elif re.match(r"^[^\(\[]", tag):
+            # Example: cat
+            pass
+        elif match := re.search(r"^(\(+)(.+)(\)+)$", tag):
+            # Example: (cat), ((cat))
+            tag = match.group(2)
+        elif match := re.search(r"^(\[+)(.+)(\]+)$", tag):
+            # Example: [cat], [[cat]]
+            tag = match.group(2)
+        else:
+            logger.warning(f"Unexpected tag format: {tag}")
+        return tag
+
+
+#################################################################
+# Nodes
+#################################################################
+class ProcessTags(BasePrompt):
+    """Full process of tags from a prompt.
+
+    Order of operations: ReplaceUnderscores -> FilterTags -> FilterSubtags"""
 
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
             "blacklist": ("STRING", {"forceInput": True}),
-            "remove_subtags": ("BOOLEAN", {"default": True}),
-            "remove_tags": ("BOOLEAN", {"default": True}),
-            "remove_underscores": ("BOOLEAN", {"default": True}),
+            "replace_underscores": ("BOOLEAN", {"default": True}),
+            "filter_tags": ("BOOLEAN", {"default": True}),
+            "filter_subtags": ("BOOLEAN", {"default": True}),
         }
     }
     RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("processed_text", "removed_tags")
+    RETURN_NAMES = ("processed_text", "filtered_tags_list")
     FUNCTION = "execute"
     CATEGORY = "AlcheminePack/Prompt"
 
+    @classmethod
     @exception_handler
     def execute(
-        self,
+        cls,
         text: str,
         blacklist: str,
-        remove_subtags: bool = True,
-        remove_tags: bool = True,
-        remove_underscores: bool = True,
-    ):
-        removed_tags_list = []
-        if remove_tags:
-            text, cur_removed_tags = RemoveTags().execute(text, blacklist)
-            if cur_removed_tags:
-                removed_tags_list.append(cur_removed_tags)
-        if remove_subtags:
-            text, cur_removed_tags = RemoveSubtags().execute(text)
-            if cur_removed_tags:
-                removed_tags_list.append(cur_removed_tags)
-        if remove_underscores:
-            text = RemoveUnderscores().execute(text)[0]
+        replace_underscores: bool = True,
+        filter_tags: bool = True,
+        filter_subtags: bool = True,
+    ) -> tuple[str, list[str]]:
+        """Process tags from a prompt."""
+        filtered_tags_list = []
 
-        return (text, removed_tags_list)
+        if replace_underscores:
+            text = ReplaceUnderscores.execute(text)[0]
+
+        if filter_tags:
+            text, cur_filtered_tags = FilterTags.execute(text, blacklist)
+            if cur_filtered_tags:
+                filtered_tags_list.append(cur_filtered_tags)
+
+        if filter_subtags:
+            text, cur_filtered_tags = FilterSubtags.execute(text)
+            if cur_filtered_tags:
+                filtered_tags_list.append(cur_filtered_tags)
+
+        return (text, filtered_tags_list)
 
 
-class RemoveTags:
-    """Remove tags from a prompt."""
+class FilterTags(BasePrompt):
+    """Filter blacklisted tags from a prompt. Regular expression is used to match tags."""
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -71,54 +215,15 @@ class RemoveTags:
         }
     }
     RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("processed_text", "removed_tags")
+    RETURN_NAMES = ("processed_text", "filtered_tags")
     FUNCTION = "execute"
     CATEGORY = "AlcheminePack/Prompt"
 
+    @classmethod
     @exception_handler
-    def execute(self, text: str, blacklist: str):
-        def normalize_tag(tag: str) -> str:
-            """Normalize tag with 2 decimal places.
-
-            Examples:
-                Input: cat
-                Output: (cat:1.00)
-
-                Input: (cat:1.2)
-                Output: (cat:1.20)
-
-                Input: ((cat))
-                Output: (cat:1.21)
-
-                Input: [cat]
-                Output: (cat:0.90)
-
-                Input: [[cat]]
-                Output: (cat:0.81)
-
-                Input: (cat:1.2:1.3)
-                Output: (cat:1.20:1.30)
-            """
-            tag = tag.strip()
-            if match := re.search(r"^\(([^()]+):([-0-9. ]+)\)$", tag):
-                # Example: (cat:1.20)
-                tag, weight = match.groups()
-            elif match := re.search(r"^\(([^()]+):([0-9. ]+):([0-9. ]+)\)$", tag):
-                # Example: (cat:1.20:1.30)
-                tag, weight_s, weight_e = match.groups()
-            elif re.match(r"^[^\(\[]", tag):
-                # Example: cat
-                pass
-            elif match := re.search(r"^(\(+)(.+)(\)+)$", tag):
-                # Example: (cat), ((cat))
-                tag = match.group(2)
-            elif match := re.search(r"^(\[+)(.+)(\]+)$", tag):
-                # Example: [cat], [[cat]]
-                tag = match.group(2)
-            else:
-                logger.warning(f"Unexpected tag format: {tag}")
-            return tag
-
+    @log_prompt
+    def execute(cls, text: str, blacklist: str) -> tuple[str, str]:
+        """Filter blacklisted tags from a prompt."""
         # 1. Split tokens by BREAK
         groups = text.split("BREAK")
 
@@ -127,20 +232,22 @@ class RemoveTags:
             r"|".join([t.strip() for t in blacklist.split(",")])
         )
 
-        # 3. Remove all tags from blacklist from each group
-        removed_tags = []
+        # 3. filter all tags from blacklist from each group
+        filtered_tag_list = []
         new_groups = []
         for group in groups:
             # Ignore empty tags
             original_tags = [t for t in group.split(",") if t.strip()]
-            comp_tags = [(idx, normalize_tag(t)) for idx, t in enumerate(original_tags)]
+            comp_tags = [
+                (idx, cls.normalize_tag(t)) for idx, t in enumerate(original_tags)
+            ]
             valid_idxs = []
             for idx, tag in comp_tags:
                 if not compiled_blacklist.search(tag):
                     valid_idxs.append(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
             new_groups.append(new_group)
-            removed_tags.extend(
+            filtered_tag_list.extend(
                 [
                     original_tags[idx].strip()
                     for idx in range(len(original_tags))
@@ -148,14 +255,14 @@ class RemoveTags:
                 ]
             )
 
-        # 3. Join groups by BREAK
-        new_text = "BREAK".join(new_groups)
-        removed_tags = ", ".join(removed_tags)
-        return (new_text, removed_tags)
+        # 4. Join groups by BREAK
+        processed_text = "BREAK".join(new_groups)
+        filtered_tags = ", ".join(filtered_tag_list)
+        return (processed_text, filtered_tags)
 
 
-class RemoveSubtags:
-    """Remove all subtags from a prompt.
+class FilterSubtags(BasePrompt):
+    """Filter subtags from a prompt.
 
     Examples:
         Input: dog, cat, white dog, black cat
@@ -165,66 +272,33 @@ class RemoveSubtags:
         Output: (cat:0.9), (cat:1.1), black cat, (black cat)
     """
 
-    INPUT_TYPES = lambda: {"required": {"text": ("STRING", {"forceInput": True})}}
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
     RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("processed_text", "removed_tags")
+    RETURN_NAMES = ("processed_text", "filtered_tags")
     FUNCTION = "execute"
     CATEGORY = "AlcheminePack/Prompt"
 
+    @classmethod
     @exception_handler
-    def execute(self, text: str):
-        def normalize_tag(tag: str) -> str:
-            """Normalize tag with 2 decimal places.
-
-            Examples:
-                Input: cat
-                Output: (cat:1.00)
-
-                Input: (cat:1.2)
-                Output: (cat:1.20)
-
-                Input: ((cat))
-                Output: (cat:1.21)
-
-                Input: [cat]
-                Output: (cat:0.90)
-
-                Input: [[cat]]
-                Output: (cat:0.81)
-
-                Input: (cat:1.2:1.3)
-                Output: (cat:1.20:1.30)
-            """
-            tag = tag.strip()
-            if match := re.search(r"^\(([^()]+):([-0-9. ]+)\)$", tag):
-                # Example: (cat:1.20)
-                tag, weight = match.groups()
-            elif match := re.search(r"^\(([^()]+):([0-9. ]+):([0-9. ]+)\)$", tag):
-                # Example: (cat:1.20:1.30)
-                tag, weight_s, weight_e = match.groups()
-            elif re.match(r"^[^\(\[]", tag):
-                # Example: cat
-                pass
-            elif match := re.search(r"^(\(+)(.+)(\)+)$", tag):
-                # Example: (cat), ((cat))
-                tag = match.group(2)
-            elif match := re.search(r"^(\[+)(.+)(\]+)$", tag):
-                # Example: [cat], [[cat]]
-                tag = match.group(2)
-            else:
-                logger.warning(f"Unexpected tag format: {tag}")
-            return tag
-
+    @log_prompt
+    def execute(cls, text: str) -> tuple[str, str]:
+        """Filter subtags from a prompt."""
         # 1. Split tokens by BREAK
         groups = text.split("BREAK")
 
-        # 2. Remove all subtags from each group
-        removed_tags = []
+        # 2. filter all subtags from each group
+        filtered_tag_list = []
         new_groups = []
         for group in groups:
             # Ignore empty tags
             original_tags = [t for t in group.split(",") if t.strip()]
-            comp_tags = [(idx, normalize_tag(t)) for idx, t in enumerate(original_tags)]
+            comp_tags = [
+                (idx, cls.normalize_tag(t)) for idx, t in enumerate(original_tags)
+            ]
             valid_idxs = set()
             for idx, tag in sorted(
                 comp_tags, key=lambda x: (len(x[1]), -x[0]), reverse=True
@@ -233,7 +307,7 @@ class RemoveSubtags:
                     valid_idxs.add(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
             new_groups.append(new_group)
-            removed_tags.extend(
+            filtered_tag_list.extend(
                 [
                     original_tags[idx].strip()
                     for idx in range(len(original_tags))
@@ -242,26 +316,46 @@ class RemoveSubtags:
             )
 
         # 3. Join groups by BREAK
-        new_text = "BREAK".join(new_groups)
-        removed_tags = ", ".join(removed_tags)
-        return (new_text, removed_tags)
+        processed_text = "BREAK".join(new_groups)
+        filtered_tags = ", ".join(filtered_tag_list)
+        return (processed_text, filtered_tags)
 
 
-class RemoveUnderscores:
-    """Remove all underscores from a prompt.
+class ReplaceUnderscores(BasePrompt):
+    """Replace underscores with spaces in a prompt.
 
     Examples:
         Input: dog_cat_white_dog_black_cat
         Output: dogcatwhitedogblackcat
     """
 
-    INPUT_TYPES = lambda: {"required": {"text": ("STRING", {"forceInput": True})}}
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("processed_text",)
     FUNCTION = "execute"
     CATEGORY = "AlcheminePack/Prompt"
 
+    @classmethod
     @exception_handler
-    def execute(self, text: str):
-        new_text = text.replace("_", " ")
-        return (new_text,)
+    @log_prompt
+    def execute(cls, text: str) -> tuple[str]:
+        """Replace underscores with spaces in a prompt."""
+        if "_" in text:
+            processed_text = text.replace("_", " ")
+        else:
+            processed_text = text
+        return (processed_text,)
+
+
+if __name__ == "__main__":
+    ProcessTags.execute(
+        "dog, cat, white dog, black cat",
+        "dog, cat",
+        filter_tags=True,
+        filter_subtags=True,
+        replace_underscores=True,
+    )
