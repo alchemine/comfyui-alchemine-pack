@@ -78,7 +78,7 @@ def log_prompt(func):
 
         # Prepare inputs
         node_label = args[0].__name__
-        input_val = args[1]
+        input_val = kwargs["text"]
         result = func(*args, **kwargs)
         output_val = result[0]
 
@@ -170,7 +170,8 @@ class ProcessTags(BasePrompt):
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
-            "blacklist": ("STRING", {"forceInput": True}),
+            "blacklist_tags": ("STRING", {"forceInput": True}),
+            "custom_processor": ("BOOLEAN", {"default": True}),
             "replace_underscores": ("BOOLEAN", {"default": True}),
             "filter_tags": ("BOOLEAN", {"default": True}),
             "filter_subtags": ("BOOLEAN", {"default": True}),
@@ -186,7 +187,8 @@ class ProcessTags(BasePrompt):
     def execute(
         cls,
         text: str,
-        blacklist: str,
+        blacklist_tags: str,
+        custom_processor: bool = True,
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
@@ -194,16 +196,21 @@ class ProcessTags(BasePrompt):
         """Process tags from a prompt."""
         filtered_tags_list = []
 
+        if custom_processor:
+            text = CustomProcessor.execute(text=text)[0]
+
         if replace_underscores:
-            text = ReplaceUnderscores.execute(text)[0]
+            text = ReplaceUnderscores.execute(text=text)[0]
 
         if filter_tags:
-            text, cur_filtered_tags = FilterTags.execute(text, blacklist)
+            text, cur_filtered_tags = FilterTags.execute(
+                text=text, blacklist_tags=blacklist_tags
+            )
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
 
         if filter_subtags:
-            text, cur_filtered_tags = FilterSubtags.execute(text)
+            text, cur_filtered_tags = FilterSubtags.execute(text=text)
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
 
@@ -216,7 +223,7 @@ class FilterTags(BasePrompt):
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
-            "blacklist": ("STRING", {"forceInput": True}),
+            "blacklist_tags": ("STRING", {"forceInput": True}),
         }
     }
     RETURN_TYPES = ("STRING", "STRING")
@@ -227,7 +234,7 @@ class FilterTags(BasePrompt):
     @classmethod
     @exception_handler
     @log_prompt
-    def execute(cls, text: str, blacklist: str) -> tuple[str, str]:
+    def execute(cls, text: str, blacklist_tags: str) -> tuple[str, str]:
         """Filter blacklisted tags from a prompt."""
         # 1. Split tokens by BREAK
         groups = text.split("BREAK")
@@ -237,12 +244,14 @@ class FilterTags(BasePrompt):
         with open(WILDCARD_PATH, "r") as f:
             wildcards = yaml.safe_load(f)
             for key, values in wildcards.items():
-                blacklist = re.sub(f"__{key}__", f"({'|'.join(values)})", blacklist)
+                blacklist_tags = re.sub(
+                    f"__{key}__", f"({'|'.join(values)})", blacklist_tags
+                )
         compiled_blacklist = re.compile(
-            r"|".join([t.strip() for t in blacklist.split(",")])
+            r"|".join([t.strip() for t in blacklist_tags.split(",")])
         )
 
-        # 3. filter all tags from blacklist from each group
+        # 3. Filter tags from blacklist from each group
         filtered_tag_list = []
         new_groups = []
         for group in groups:
@@ -256,7 +265,7 @@ class FilterTags(BasePrompt):
                 if not compiled_blacklist.search(tag):
                     valid_idxs.append(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
-            new_groups.append(new_group)
+            new_groups.append(new_group.strip())
             filtered_tag_list.extend(
                 [
                     original_tags[idx].strip()
@@ -266,7 +275,7 @@ class FilterTags(BasePrompt):
             )
 
         # 4. Join groups by BREAK
-        processed_text = "BREAK".join(new_groups)
+        processed_text = "\nBREAK\n\n".join(new_groups)
         filtered_tags = ", ".join(filtered_tag_list)
         return (processed_text, filtered_tags)
 
@@ -316,7 +325,7 @@ class FilterSubtags(BasePrompt):
                 if not any(tag in comp_tags[valid_idx][1] for valid_idx in valid_idxs):
                     valid_idxs.add(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
-            new_groups.append(new_group)
+            new_groups.append(new_group.strip())
             filtered_tag_list.extend(
                 [
                     original_tags[idx].strip()
@@ -326,7 +335,7 @@ class FilterSubtags(BasePrompt):
             )
 
         # 3. Join groups by BREAK
-        processed_text = "BREAK".join(new_groups)
+        processed_text = "\nBREAK\n\n".join(new_groups)
         filtered_tags = ", ".join(filtered_tag_list)
         return (processed_text, filtered_tags)
 
@@ -354,19 +363,45 @@ class ReplaceUnderscores(BasePrompt):
     @log_prompt
     def execute(cls, text: str) -> tuple[str]:
         """Replace underscores with spaces in a prompt."""
-        if "_" in text:
-            processed_text = text.replace("_", " ")
-        else:
-            processed_text = text
+        processed_text = text.replace("_", " ")
+        return (processed_text,)
+
+
+class CustomProcessor(BasePrompt):
+    """Custom processor for a prompt.
+
+    Examples:
+        Input: tag, (BREAK:-1), tags
+        Output: tag BREAK tags
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("processed_text",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(cls, text: str) -> tuple[str]:
+        """Custom processor for a prompt."""
+        # 1. Remove a weight of BREAK (fix TIPO output prompt)
+        processed_text = re.sub(r",?\s*\(BREAK:-1\),?\s*", " BREAK ", text)
         return (processed_text,)
 
 
 if __name__ == "__main__":
     result = ProcessTags.execute(
-        "blue eyes, 123",
+        "fisheye, (BREAK:-1), cat, dogs",
         "__color__ eyes, hello",
-        filter_subtags=True,
+        custom_processor=True,
         replace_underscores=True,
         filter_tags=True,
+        filter_subtags=True,
     )
     print(result)

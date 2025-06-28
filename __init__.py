@@ -1,4 +1,10 @@
-from .nodes.prompt import ProcessTags, FilterSubtags, FilterTags, ReplaceUnderscores
+from .nodes.prompt import (
+    ProcessTags,
+    FilterSubtags,
+    FilterTags,
+    ReplaceUnderscores,
+    CustomProcessor,
+)
 
 
 # A dictionary that contains all nodes you want to export with their names
@@ -8,6 +14,7 @@ NODE_CLASS_MAPPINGS = {
     "FilterTags": FilterTags,
     "FilterSubtags": FilterSubtags,
     "ReplaceUnderscores": ReplaceUnderscores,
+    "CustomProcessor": CustomProcessor,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -16,4 +23,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FilterTags": "Filter Tags",
     "FilterSubtags": "Filter Subtags",
     "ReplaceUnderscores": "Replace Underscores",
+    "CustomProcessor": "Custom Processor",
 }
