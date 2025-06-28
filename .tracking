@@ -1,7 +1,7 @@
 README.md
 .gitignore
 pyproject.toml
-nodes.py
+nodes/prompt.py
 __init__.py
 .github/workflows/publish.yml
 .github/ISSUE_TEMPLATE/bug_report.md
