@@ -1,4 +1,5 @@
 # ComfyUI-Alchemine-Pack
+![](workflow/workflow.png)
 
 ComfyUI-Alchemine-Pack is a custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI).
 It provides nodes to assist with various workflow tasks, such as prompt processing.
@@ -95,6 +96,7 @@ Output: dog cat white dog black cat
 ---
 
 # ComfyUI-Alchemine-Pack
+![](workflow/workflow.png)
 
 ComfyUI-Alchemine-Pack은 [ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다.
 프롬프트 처리 등 다양한 워크플로우를 보조하는 노드를 제공합니다.
