@@ -4,17 +4,22 @@ import textwrap
 from pathlib import Path
 from functools import wraps
 
+import yaml
+
 
 #################################################################
 # Logger setup
 #################################################################
-ROOT_DIR = Path(__file__).parent.parent.parent
+ROOT_DIR = Path(__file__).parent.parent
+CUSTOM_NODES_DIR = ROOT_DIR.parent
+RESOURCES_DIR = ROOT_DIR / "resources"
+WILDCARD_PATH = RESOURCES_DIR / "wildcards.yaml"
 
 
 def get_logger(name: str = __file__, level: int = logging.WARNING):
     class RootNameFormatter(logging.Formatter):
         def format(self, record):
-            record.name = str(Path(record.name).relative_to(ROOT_DIR))
+            record.name = str(Path(record.name).relative_to(CUSTOM_NODES_DIR))
             return super().format(record)
 
     logger = logging.getLogger(name)
@@ -228,6 +233,11 @@ class FilterTags(BasePrompt):
         groups = text.split("BREAK")
 
         # 2. Compile blacklist
+        # Convert wildcards to regex
+        with open(WILDCARD_PATH, "r") as f:
+            wildcards = yaml.safe_load(f)
+            for key, values in wildcards.items():
+                blacklist = re.sub(f"__{key}__", f"({'|'.join(values)})", blacklist)
         compiled_blacklist = re.compile(
             r"|".join([t.strip() for t in blacklist.split(",")])
         )
@@ -352,10 +362,11 @@ class ReplaceUnderscores(BasePrompt):
 
 
 if __name__ == "__main__":
-    ProcessTags.execute(
-        "dog, cat, white dog, black cat",
-        "dog, cat",
-        filter_tags=True,
+    result = ProcessTags.execute(
+        "blue eyes, 123",
+        "__color__ eyes, hello",
         filter_subtags=True,
         replace_underscores=True,
+        filter_tags=True,
     )
+    print(result)
