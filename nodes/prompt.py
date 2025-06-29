@@ -170,12 +170,15 @@ class ProcessTags(BasePrompt):
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
-            "blacklist_tags": ("STRING", {"forceInput": True}),
             "custom_processor": ("BOOLEAN", {"default": True}),
             "replace_underscores": ("BOOLEAN", {"default": True}),
             "filter_tags": ("BOOLEAN", {"default": True}),
             "filter_subtags": ("BOOLEAN", {"default": True}),
-        }
+        },
+        "optional": {
+            "blacklist_tags": ("STRING", {"default": ""}),
+            "fixed_tags": ("STRING", {"default": ""}),
+        },
     }
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("processed_text", "filtered_tags_list")
@@ -187,11 +190,12 @@ class ProcessTags(BasePrompt):
     def execute(
         cls,
         text: str,
-        blacklist_tags: str,
         custom_processor: bool = True,
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
+        blacklist_tags: str = "",
+        fixed_tags: str = "",
     ) -> tuple[str, list[str]]:
         """Process tags from a prompt."""
         filtered_tags_list = []
@@ -204,13 +208,15 @@ class ProcessTags(BasePrompt):
 
         if filter_tags:
             text, cur_filtered_tags = FilterTags.execute(
-                text=text, blacklist_tags=blacklist_tags
+                text=text, blacklist_tags=blacklist_tags, fixed_tags=fixed_tags
             )
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
 
         if filter_subtags:
-            text, cur_filtered_tags = FilterSubtags.execute(text=text)
+            text, cur_filtered_tags = FilterSubtags.execute(
+                text=text, fixed_tags=fixed_tags
+            )
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
 
@@ -223,8 +229,11 @@ class FilterTags(BasePrompt):
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
-            "blacklist_tags": ("STRING", {"forceInput": True}),
-        }
+        },
+        "optional": {
+            "blacklist_tags": ("STRING", {"default": ""}),
+            "fixed_tags": ("STRING", {"default": ""}),
+        },
     }
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("processed_text", "filtered_tags")
@@ -234,10 +243,19 @@ class FilterTags(BasePrompt):
     @classmethod
     @exception_handler
     @log_prompt
-    def execute(cls, text: str, blacklist_tags: str) -> tuple[str, str]:
+    def execute(
+        cls, text: str, blacklist_tags: str = "", fixed_tags: str = ""
+    ) -> tuple[str, str]:
         """Filter blacklisted tags from a prompt."""
         # 1. Split tokens by BREAK
         groups = text.split("BREAK")
+        fixed_tags_set = set(
+            [
+                cls.normalize_tag(t)
+                for t in re.split(r"BREAK|,", fixed_tags)
+                if t.strip()
+            ]
+        )
 
         # 2. Compile blacklist
         # Convert wildcards to regex
@@ -262,7 +280,7 @@ class FilterTags(BasePrompt):
             ]
             valid_idxs = []
             for idx, tag in comp_tags:
-                if not compiled_blacklist.search(tag):
+                if (tag in fixed_tags_set) or not compiled_blacklist.search(tag):
                     valid_idxs.append(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
             new_groups.append(new_group.strip())
@@ -294,7 +312,10 @@ class FilterSubtags(BasePrompt):
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
-        }
+        },
+        "optional": {
+            "fixed_tags": ("STRING", {"default": ""}),
+        },
     }
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("processed_text", "filtered_tags")
@@ -304,10 +325,17 @@ class FilterSubtags(BasePrompt):
     @classmethod
     @exception_handler
     @log_prompt
-    def execute(cls, text: str) -> tuple[str, str]:
+    def execute(cls, text: str, fixed_tags: str = "") -> tuple[str, str]:
         """Filter subtags from a prompt."""
         # 1. Split tokens by BREAK
         groups = text.split("BREAK")
+        fixed_tags_set = set(
+            [
+                cls.normalize_tag(t)
+                for t in re.split(r"BREAK|,", fixed_tags)
+                if t.strip()
+            ]
+        )
 
         # 2. filter all subtags from each group
         filtered_tag_list = []
@@ -322,7 +350,9 @@ class FilterSubtags(BasePrompt):
             for idx, tag in sorted(
                 comp_tags, key=lambda x: (len(x[1]), -x[0]), reverse=True
             ):
-                if not any(tag in comp_tags[valid_idx][1] for valid_idx in valid_idxs):
+                if (tag in fixed_tags_set) or not any(
+                    tag in comp_tags[valid_idx][1] for valid_idx in valid_idxs
+                ):
                     valid_idxs.add(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
             new_groups.append(new_group.strip())
