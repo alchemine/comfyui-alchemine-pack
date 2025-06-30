@@ -272,9 +272,14 @@ class FilterTags(BasePrompt):
         # 3. Filter tags from blacklist from each group
         filtered_tag_list = []
         new_groups = []
+        visited_tags = set()
         for group in groups:
             # Ignore empty tags
-            original_tags = [t for t in group.split(",") if t.strip()]
+            original_tags = []
+            for tag in group.split(","):
+                if tag.strip() and tag not in visited_tags:
+                    visited_tags.add(tag)
+                    original_tags.append(tag)
             comp_tags = [
                 (idx, cls.normalize_tag(t)) for idx, t in enumerate(original_tags)
             ]
@@ -340,9 +345,14 @@ class FilterSubtags(BasePrompt):
         # 2. filter all subtags from each group
         filtered_tag_list = []
         new_groups = []
+        visited_tags = set()
         for group in groups:
             # Ignore empty tags
-            original_tags = [t for t in group.split(",") if t.strip()]
+            original_tags = []
+            for tag in group.split(","):
+                if tag.strip() and tag not in visited_tags:
+                    visited_tags.add(tag)
+                    original_tags.append(tag)
             comp_tags = [
                 (idx, cls.normalize_tag(t)) for idx, t in enumerate(original_tags)
             ]
