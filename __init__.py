@@ -4,6 +4,7 @@ from .nodes.prompt import (
     FilterTags,
     ReplaceUnderscores,
     CustomProcessor,
+    DanbooruRetriever,
 )
 
 
@@ -15,6 +16,7 @@ NODE_CLASS_MAPPINGS = {
     "FilterSubtags": FilterSubtags,
     "ReplaceUnderscores": ReplaceUnderscores,
     "CustomProcessor": CustomProcessor,
+    "DanbooruRetriever": DanbooruRetriever,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -24,4 +26,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FilterSubtags": "Filter Subtags",
     "ReplaceUnderscores": "Replace Underscores",
     "CustomProcessor": "Custom Processor",
+    "DanbooruRetriever": "Danbooru Retriever",
 }
