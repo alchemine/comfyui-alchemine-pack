@@ -5,6 +5,7 @@ from .nodes.prompt import (
     ReplaceUnderscores,
     CustomProcessor,
     DanbooruRetriever,
+    TokenAnalyzer,
 )
 
 
@@ -17,6 +18,7 @@ NODE_CLASS_MAPPINGS = {
     "ReplaceUnderscores": ReplaceUnderscores,
     "CustomProcessor": CustomProcessor,
     "DanbooruRetriever": DanbooruRetriever,
+    "TokenAnalyzer": TokenAnalyzer,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -27,4 +29,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ReplaceUnderscores": "Replace Underscores",
     "CustomProcessor": "Custom Processor",
     "DanbooruRetriever": "Danbooru Retriever",
+    "TokenAnalyzer": "Token Analyzer",
 }

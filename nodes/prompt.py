@@ -1,6 +1,7 @@
 import re
 import logging
 import textwrap
+from time import sleep
 from pathlib import Path
 from functools import wraps
 
@@ -104,6 +105,23 @@ def log_prompt(func):
         content = f"\n{mid}\n".join(contents)
         table = f"{top}\n{content}\n{bot}"
         logger.debug(f"\n{table}")
+        return result
+
+    return wrapper
+
+
+def retry(func, retries: int = 3, delay: float = 1e-2, exceptions=(Exception,)):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        for attempt in range(retries):
+            try:
+                result = func(*args, **kwargs)
+                break
+            except exceptions:
+                if attempt < retries - 1:
+                    sleep(delay)
+                else:
+                    raise
         return result
 
     return wrapper
@@ -620,6 +638,80 @@ class DanbooruRetriever(BasePrompt):
         # 2. Replace underscores with spaces
         tag = tag.replace("_", " ")
         return tag
+
+
+class TokenAnalyzer(BasePrompt):
+    """Analyze tokens in a prompt."""
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "clip": ("CLIP", {"forceInput": True}),
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("g_tokens", "g_token_count", "l_tokens", "l_token_count")
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    def execute(cls, clip, text) -> tuple[str, str, str, str]:
+        if isinstance(text, list):
+            # NOTE: unexpected list type handling
+            text = ", ".join(text)
+        tokens = clip.tokenize(text)
+
+        results = {}
+        tokenizer_ids = ["g", "l"]
+        for tokenizer_id in tokenizer_ids:
+            tokenizer = getattr(clip.tokenizer, f"clip_{tokenizer_id}")
+
+            # Filter out special tokens (start, end, pad)
+            # NOTE: tokens[tokenizer_id].shape: (batch_size, seq_len, embedding_dim)
+            # NOTE: seq_len: N*77(75 + start_token + end_token)
+            tid_weight_pairs = [
+                (tid, weight)
+                for tid, weight in tokens[tokenizer_id][0]  # [0]: first sample
+                if tid
+                not in [tokenizer.start_token, tokenizer.end_token, tokenizer.pad_token]
+            ]
+
+            token_strs = []
+            for (tid, weight), token_str in tokenizer.untokenize(tid_weight_pairs):
+                token_strs.append(
+                    f"({token_str}:{weight})" if weight != 1 else token_str
+                )
+            split_tokens = cls._split_tokens_by_break(token_strs)
+            results[tokenizer_id] = {
+                "tokens": "\n\n".join([" | ".join(tokens) for tokens in split_tokens]),
+                "token_count": ", ".join([str(len(tokens)) for tokens in split_tokens]),
+            }
+
+        return (
+            results["g"]["tokens"],
+            results["g"]["token_count"],
+            results["l"]["tokens"],
+            results["l"]["token_count"],
+        )
+
+    @staticmethod
+    def _split_tokens_by_break(tokens: list[str]) -> list[list[str]]:
+        """Split tokens by BREAK."""
+        # NOTE: break token can be different for each tokenizer
+        BREAK_TOKEN = "break</w>"
+
+        concat_tokens = []
+        cur_tokens = []
+        for token in tokens:
+            if token == BREAK_TOKEN:
+                concat_tokens.append(cur_tokens)
+                cur_tokens = []
+            else:
+                cur_tokens.append(token)
+        else:
+            concat_tokens.append(cur_tokens)
+
+        return concat_tokens
 
 
 if __name__ == "__main__":
