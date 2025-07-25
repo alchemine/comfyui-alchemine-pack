@@ -4,9 +4,9 @@ from .nodes.prompt import (
     FilterTags,
     ReplaceUnderscores,
     CustomProcessor,
-    DanbooruRetriever,
     TokenAnalyzer,
 )
+from .nodes.danbooru import DanbooruRelatedTagsRetriever
 
 
 # A dictionary that contains all nodes you want to export with their names
@@ -17,7 +17,7 @@ NODE_CLASS_MAPPINGS = {
     "FilterSubtags": FilterSubtags,
     "ReplaceUnderscores": ReplaceUnderscores,
     "CustomProcessor": CustomProcessor,
-    "DanbooruRetriever": DanbooruRetriever,
+    "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
     "TokenAnalyzer": TokenAnalyzer,
 }
 
@@ -28,6 +28,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FilterSubtags": "Filter Subtags",
     "ReplaceUnderscores": "Replace Underscores",
     "CustomProcessor": "Custom Processor",
-    "DanbooruRetriever": "Danbooru Retriever",
+    "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
     "TokenAnalyzer": "Token Analyzer",
 }
