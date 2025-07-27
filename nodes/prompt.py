@@ -6,8 +6,6 @@ from pathlib import Path
 from functools import wraps
 
 import yaml
-import aiohttp
-import asyncio
 
 
 #################################################################
@@ -553,20 +551,12 @@ class TokenAnalyzer(BasePrompt):
 
 
 if __name__ == "__main__":
-    # result = ProcessTags.execute(
-    #     "fisheye, (BREAK:-1), cat, dogs, (cat:0.9), (cat:1.1), black cat, (black cat)",
-    #     blacklist_tags="__color__ eyes, hello",
-    #     fixed_tags="cat, dogs, (cat:0.9), (cat:1.1), black cat, (black cat)",
-    #     replace_underscores=True,
-    #     filter_tags=True,
-    #     filter_subtags=True,
-    # )
-    result = DanbooruRetriever.execute(
-        text=r"ray \(arknights\), amiya \(arknights\)",
-        threshold=0.3,
-        category="General",
-        order="Frequency",
-        n_min_tags=10,
-        n_max_tags=100,
+    result = ProcessTags.execute(
+        "fisheye, (BREAK:-1), cat, dogs, (cat:0.9), (cat:1.1), black cat, (black cat)",
+        blacklist_tags="__color__ eyes, hello",
+        fixed_tags="cat, dogs, (cat:0.9), (cat:1.1), black cat, (black cat)",
+        replace_underscores=True,
+        filter_tags=True,
+        filter_subtags=True,
     )
     print(result)

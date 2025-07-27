@@ -1,12 +1,17 @@
 import re
 import logging
 import textwrap
+from math import ceil
 from time import sleep
 from pathlib import Path
+from random import sample
+from random import seed as random_seed
 from functools import wraps
+from collections import defaultdict
 
 import aiohttp
 import asyncio
+import requests
 
 
 #################################################################
@@ -198,6 +203,38 @@ class BasePrompt:
             pass
         return tag
 
+    @staticmethod
+    def convert_to_danbooru_tag(tag: str) -> str:
+        """Convert a tag to a Danbooru tag.
+
+        Examples:
+            Input: cat
+            Output: cat
+        """
+        # 1. Replace spaces with underscores
+        tag = tag.strip()
+        tag = tag.replace(" ", "_")
+
+        # 2. Replace parentheses with brackets
+        tag = tag.replace(r"\(", r"(").replace(r"\)", r")")
+        return tag
+
+    @staticmethod
+    def convert_from_danbooru_tag(tag: str) -> str:
+        """Convert a Danbooru tag to a tag.
+
+        Examples:
+            Input: cat
+            Output: cat
+        """
+        # 1. Replace parentheses with brackets
+        tag = tag.strip()
+        tag = tag.replace(r"(", r"\(").replace(r")", r"\)")
+
+        # 2. Replace underscores with spaces
+        tag = tag.replace("_", " ")
+        return tag
+
 
 #################################################################
 # Nodes
@@ -228,8 +265,8 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
                 },
             ),
             "threshold": ("FLOAT", {"default": 0.3}),
-            "n_min_tags": ("INT", {"default": 0}),
-            "n_max_tags": ("INT", {"default": 100}),
+            "n_min_tags": ("INT", {"default": 0, "min": 0}),
+            "n_max_tags": ("INT", {"default": 100, "min": 1}),
         }
     }
     RETURN_TYPES = ("STRING",)
@@ -315,11 +352,6 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
         n_min_tags: int = 0,
         n_max_tags: int = 100,
     ) -> tuple[str]:
-        # Sanity check
-        assert (
-            n_min_tags <= n_max_tags
-        ), "n_min_tags must be less than or equal to n_max_tags"
-
         return asyncio.run(
             cls.async_execute(
                 text=text,
@@ -331,46 +363,238 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
             )
         )
 
-    @staticmethod
-    def convert_to_danbooru_tag(tag: str) -> str:
-        """Convert a tag to a Danbooru tag.
+    @classmethod
+    def VALIDATE_INPUTS(
+        cls,
+        text: str,
+        category: str = "General",
+        order: str = "Frequency",
+        threshold: float = 0.5,
+        n_min_tags: int = 0,
+        n_max_tags: int = 100,
+    ) -> bool:
+        if n_min_tags <= n_max_tags:
+            return True
+        else:
+            logger.error("n_min_tags must be less than or equal to n_max_tags")
+            return False
 
-        Examples:
-            Input: cat
-            Output: cat
-        """
-        # 1. Replace spaces with underscores
-        tag = tag.strip()
-        tag = tag.replace(" ", "_")
 
-        # 2. Replace parentheses with brackets
-        tag = tag.replace(r"\(", r"(").replace(r"\)", r")")
-        return tag
+class DanbooruPostTagsRetriever(BasePrompt):
+    """Retrieve tags from a Danbooru post.
 
-    @staticmethod
-    def convert_from_danbooru_tag(tag: str) -> str:
-        """Convert a Danbooru tag to a tag.
+    Examples:
+        Input: 1234567890
+        Output: ray (arknights), animal ears, pantyhose
+    """
 
-        Examples:
-            Input: cat
-            Output: cat
-        """
-        # 1. Replace parentheses with brackets
-        tag = tag.strip()
-        tag = tag.replace(r"(", r"\(").replace(r")", r"\)")
+    INPUT_TYPES = lambda: {
+        "required": {
+            "post_id": ("STRING", {}),
+        }
+    }
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = (
+        "full_tags",
+        "general_tags",
+        "character_tags",
+        "copyright_tags",
+        "artist_tags",
+        "meta_tags",
+    )
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
 
-        # 2. Replace underscores with spaces
-        tag = tag.replace("_", " ")
-        return tag
+    @classmethod
+    def execute(cls, post_id: str) -> tuple[str, str, str, str, str, str]:
+        url = f"https://danbooru.donmai.us/posts/{post_id}.json"
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+
+        # tag_string
+        convert = lambda key: ", ".join(
+            map(cls.convert_from_danbooru_tag, data[key].split())
+        )
+        general_tags = convert("tag_string_general")
+        character_tags = convert("tag_string_character")
+        copyright_tags = convert("tag_string_copyright")
+        artist_tags = convert("tag_string_artist")
+        meta_tags = convert("tag_string_meta")
+
+        # NOTE: meta tags are excluded from full_tags
+        # full_tags = convert("tag_string")
+        full_tags = ", ".join(
+            [character_tags, copyright_tags, artist_tags, general_tags]
+        )
+
+        return (
+            full_tags,
+            general_tags,
+            character_tags,
+            copyright_tags,
+            artist_tags,
+            meta_tags,
+        )
+
+    @classmethod
+    def IS_CHANGED(cls, post_id: str) -> str:
+        return post_id
+
+
+class DanbooruPopularPostsTagsRetriever(BasePrompt):
+    """Retrieve popular posts' tags from Danbooru.
+
+    TODO: cache requests (Too Many Requests errors)
+    TODO: check score
+
+    Examples:
+        Input: date="2025-01-01", scale="day", n=1, random=True, seed=0
+        Output: ray (arknights), animal ears, pantyhose
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "date": ("STRING", {"default": ""}),
+            "scale": (
+                ["day", "week", "month"],
+                {"default": "day"},
+            ),
+            "n": ("INT", {"default": 1, "min": 1}),
+            "random": ("BOOLEAN", {"default": True}),
+            "seed": ("INT", {"default": 0}),
+        }
+    }
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = (
+        "full_tags",
+        "general_tags",
+        "character_tags",
+        "copyright_tags",
+        "artist_tags",
+        "meta_tags",
+    )
+    OUTPUT_IS_LIST = (True, True, True, True, True, True)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    def execute(
+        cls,
+        date: str = "",
+        scale: str = "day",
+        n: int = 1,
+        random: bool = True,
+        seed: int = 0,
+    ) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str]]:
+        return asyncio.run(
+            cls.async_execute(date=date, scale=scale, n=n, random=random, seed=seed)
+        )
+
+    @classmethod
+    async def async_execute(
+        cls,
+        date: str = "",
+        scale: str = "day",
+        n: int = 1,
+        random: bool = True,
+        seed: int = 0,
+    ) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str]]:
+        N_POSTS_PER_POPULAR_PAGE = 60
+
+        params = {}
+        if date:
+            params["date"] = date
+        if scale:
+            params["scale"] = scale
+
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+
+            if random:
+                # NOTE: Select `n` posts from `n` pages
+                n_pages = n
+            else:
+                n_pages = ceil(n / N_POSTS_PER_POPULAR_PAGE)
+            for page in range(n_pages):
+                params["page"] = page
+                params_str = (
+                    "?" + "&".join([f"{k}={v}" for k, v in params.items()])
+                    if params
+                    else ""
+                )
+                url = (
+                    f"https://danbooru.donmai.us/explore/posts/popular.json{params_str}"
+                )
+                tasks.append(session.get(url))
+            responses = await asyncio.gather(*tasks)
+
+            datas = []
+            for resp in responses:
+                resp.raise_for_status()
+                datas.extend(await resp.json())
+
+        if random:
+            random_seed(seed)
+            datas = sample(datas, n)
+        else:
+            datas = sorted(datas, key=lambda x: x["score"], reverse=True)
+            datas = datas[:n]
+
+        convert = lambda data, key: ", ".join(
+            map(cls.convert_from_danbooru_tag, data[key].split())
+        )
+
+        result = defaultdict(list)
+        for data in datas:
+            general_tags = convert(data, "tag_string_general")
+            character_tags = convert(data, "tag_string_character")
+            copyright_tags = convert(data, "tag_string_copyright")
+            artist_tags = convert(data, "tag_string_artist")
+            meta_tags = convert(data, "tag_string_meta")
+
+            # NOTE: meta tags are excluded from full_tags
+            # full_tags = convert(data, "tag_string")
+            full_tags = ", ".join(
+                [character_tags, copyright_tags, artist_tags, general_tags]
+            )
+            result["full_tags"].append(full_tags)
+            result["general_tags"].append(general_tags)
+            result["character_tags"].append(character_tags)
+            result["copyright_tags"].append(copyright_tags)
+            result["artist_tags"].append(artist_tags)
+            result["meta_tags"].append(meta_tags)
+
+        return (
+            result["full_tags"],
+            result["general_tags"],
+            result["character_tags"],
+            result["copyright_tags"],
+            result["artist_tags"],
+            result["meta_tags"],
+        )
+
+    @classmethod
+    def IS_CHANGED(
+        cls, date: str, scale: str, n: int, random: bool, seed: int
+    ) -> tuple:
+        if random:
+            return (date, scale, n, random, seed)
+        else:
+            return (date, scale, n)
 
 
 if __name__ == "__main__":
-    result = DanbooruRelatedTagsRetriever.execute(
-        text=r"ray \(arknights\), amiya \(arknights\)",
-        threshold=0.3,
-        category="General",
-        order="Frequency",
-        n_min_tags=10,
-        n_max_tags=100,
+    # result = DanbooruRelatedTagsRetriever.execute(
+    #     text=r"ray \(arknights\), amiya \(arknights\)",
+    #     threshold=0.3,
+    #     category="General",
+    #     order="Frequency",
+    #     n_min_tags=10,
+    #     n_max_tags=100,
+    # )
+    # result = DanbooruPostTagsRetriever.execute(post_id="9557805")
+    result = DanbooruPopularPostsTagsRetriever.execute(
+        date="", scale="day", n=2, random=False, seed=0
     )
-    print(result)
+    print(result[0])
