@@ -11,6 +11,7 @@ from .nodes.danbooru import (
     DanbooruPostTagsRetriever,
     DanbooruPopularPostsTagsRetriever,
 )
+from .nodes.input import WidthHeight
 
 
 # A dictionary that contains all nodes you want to export with their names
@@ -25,6 +26,7 @@ NODE_CLASS_MAPPINGS = {
     "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
     "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
     "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
+    "WidthHeight": WidthHeight,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -38,4 +40,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
     "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
     "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",
+    "WidthHeight": "Width Height",
 }
