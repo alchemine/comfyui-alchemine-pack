@@ -5,6 +5,7 @@ import textwrap
 from io import BytesIO
 from time import sleep
 from pathlib import Path
+from base64 import b64encode
 from functools import wraps, lru_cache
 
 import torch
@@ -137,7 +138,21 @@ def retry(func, retries: int = 3, delay: float = 1e-2, exceptions=(Exception,)):
 class BaseInference:
     """Base class for Inference nodes."""
 
-    pass
+    @staticmethod
+    def encode_image(image: torch.Tensor, return_bytes: bool = False) -> bytes | str:
+        assert image.ndim == 4, "Image must be a 4D tensor"  # [B, H, W, C]
+        image_tensor = image[0].detach().cpu().numpy()  # float in [0, 1]
+        image_tensor = (image_tensor * 255).astype(np.uint8)
+        image_pil = Image.fromarray(image_tensor)
+        image_bytes = BytesIO()
+        image_pil.save(image_bytes, format="PNG")
+        image_bytes = image_bytes.getvalue()
+
+        if return_bytes:
+            return image_bytes
+        else:
+            image_b64 = b64encode(image_bytes).decode("utf-8")
+            return image_b64
 
 
 #################################################################
@@ -153,19 +168,19 @@ class GeminiInference(BaseInference):
     INPUT_TYPES = lambda: {
         "required": {
             "image": ("IMAGE", {"default": None}),
-            "prompt": (
+            "system_instruction": (
                 "STRING",
                 {
-                    "default": "#1: They are standing",
+                    "default": "You are a helpful assistant.",
                     "multiline": True,
                     "placeholder": "Prompt Text",
                     "dynamicPrompts": True,
                 },
             ),
-            "system_instruction": (
+            "prompt": (
                 "STRING",
                 {
-                    "default": "You are a helpful assistant.",
+                    "default": "#1: They are standing",
                     "multiline": True,
                     "placeholder": "Prompt Text",
                     "dynamicPrompts": True,
@@ -187,8 +202,8 @@ class GeminiInference(BaseInference):
     def execute(
         cls,
         image: list[torch.Tensor] | None = None,
-        prompt: str = "",
         system_instruction: str = "You are a helpful assistant.",
+        prompt: str = "",
         gemini_api_key: str = "",
         model: str = "latest",
         max_output_tokens: int = 100,
@@ -202,13 +217,7 @@ class GeminiInference(BaseInference):
         # Add image tokens
         parts = []
         if image is not None:
-            assert image.ndim == 4, "Image must be a 4D tensor"  # [B, H, W, C]
-            image_tensor = image[0].detach().cpu().numpy()  # float in [0, 1]
-            image_tensor = (image_tensor * 255).astype(np.uint8)
-            image_pil = Image.fromarray(image_tensor)
-            image_bytes = BytesIO()
-            image_pil.save(image_bytes, format="PNG")
-            image_bytes = image_bytes.getvalue()
+            image_bytes = cls.encode_image(image, return_bytes=True)
             parts.append(
                 {"inline_data": {"data": image_bytes, "mime_type": "image/png"}}
             )
@@ -293,8 +302,8 @@ class GeminiInference(BaseInference):
     def IS_CHANGED(
         cls,
         image: list[torch.Tensor] | None = None,
-        prompt: str = "",
         system_instruction: str = "You are a helpful assistant.",
+        prompt: str = "",
         gemini_api_key: str = "",
         model: str = "latest",
         max_output_tokens: int = 100,
@@ -303,8 +312,8 @@ class GeminiInference(BaseInference):
     ) -> tuple:
         return (
             image,
-            prompt,
             system_instruction,
+            prompt,
             gemini_api_key,
             model,
             max_output_tokens,
@@ -380,19 +389,19 @@ class OllamaInference(BaseInference):
     INPUT_TYPES = lambda: {
         "required": {
             "image": ("IMAGE", {"default": None}),
-            "prompt": (
+            "system_instruction": (
                 "STRING",
                 {
-                    "default": "#1: They are standing",
+                    "default": "You are a helpful assistant.",
                     "multiline": True,
                     "placeholder": "Prompt Text",
                     "dynamicPrompts": True,
                 },
             ),
-            "system_instruction": (
+            "prompt": (
                 "STRING",
                 {
-                    "default": "You are a helpful assistant.",
+                    "default": "#1: They are standing",
                     "multiline": True,
                     "placeholder": "Prompt Text",
                     "dynamicPrompts": True,
@@ -414,8 +423,8 @@ class OllamaInference(BaseInference):
     def execute(
         cls,
         image: list[torch.Tensor] | None = None,
-        prompt: str = "",
         system_instruction: str = "You are a helpful assistant.",
+        prompt: str = "",
         ollama_url: str = "",
         model: str = "",
         max_output_tokens: int = 100,
@@ -423,19 +432,14 @@ class OllamaInference(BaseInference):
         think: bool = False,
     ) -> tuple[str]:
         # Add image tokens
-        user_message = {"role": "user", "content": ""}
-        if image is not None:
-            assert image.ndim == 4, "Image must be a 4D tensor"  # [B, H, W, C]
-            image_tensor = image[0].detach().cpu().numpy()  # float in [0, 1]
-            image_tensor = (image_tensor * 255).astype(np.uint8)
-            image_pil = Image.fromarray(image_tensor)
-            image_bytes = BytesIO()
-            image_pil.save(image_bytes, format="PNG")
-            image_bytes = image_bytes.getvalue()
-            user_message["images"] = [image_bytes]
+        user_message = {"role": "user"}
 
-        # Add response length limit
-        prompt = f"{prompt}\n---\n결과는 {max_output_tokens//2}개의 단어 이내로 작성해주세요."
+        # Add image content
+        if image is not None:
+            image_b64 = cls.encode_image(image)
+            user_message["images"] = [image_b64]
+
+        # Add text content
         user_message["content"] = prompt
 
         # Check if the model is available
@@ -447,6 +451,11 @@ class OllamaInference(BaseInference):
         ], f"Invalid model: {model}"
 
         # Generate response
+        if model.startswith("qwen3"):
+            # Optimal parameters for Qwen3
+            options = {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0}
+        else:
+            options = {}
         response = requests.post(
             f"{ollama_url}/api/chat",
             json={
@@ -460,12 +469,8 @@ class OllamaInference(BaseInference):
                 "options": {
                     "seed": seed,
                     "num_predict": max_output_tokens,
-                    "num_keep": 10,  # Keep model in memory for 10 minutes
-                    # Optimal parameters for Qwen3
-                    "temperature": 0.7,
-                    "top_p": 0.8,
-                    "top_k": 20,
-                    "min_p": 0,
+                    # "num_keep": 10,  # Keep model in memory for 10 minutes
+                    **options,
                 },
             },
         )
@@ -478,8 +483,8 @@ class OllamaInference(BaseInference):
     def IS_CHANGED(
         cls,
         image: list[torch.Tensor] | None = None,
-        prompt: str = "",
         system_instruction: str = "You are a helpful assistant.",
+        prompt: str = "",
         ollama_url: str = "",
         model: str = "",
         max_output_tokens: int = 100,
@@ -488,8 +493,8 @@ class OllamaInference(BaseInference):
     ) -> tuple:
         return (
             image,
-            prompt,
             system_instruction,
+            prompt,
             ollama_url,
             model,
             max_output_tokens,
@@ -500,5 +505,10 @@ class OllamaInference(BaseInference):
 
 if __name__ == "__main__":
     # text = GeminiInference.execute(prompt="Hello, how are you?")
-    text = OllamaInference.execute(prompt="Hello, how are you?", model="qwen3:8b")
+    text = OllamaInference.execute(
+        prompt="Hello, how are you?",
+        model="qwen3:0.6b",
+        think=True,
+        max_output_tokens=1000,
+    )
     print(text)
