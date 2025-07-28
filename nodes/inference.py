@@ -503,6 +503,105 @@ class OllamaInference(BaseInference):
         )
 
 
+class TextEditingInference(BaseInference):
+    """Text editing inference.
+
+    References:
+    - https://huggingface.co/grammarly/coedit-large (selected)
+    - https://huggingface.co/vennify/t5-base-grammar-correction (backup)
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "predefined_system_instruction": (
+                [
+                    "",
+                    "Fix the grammar",
+                    "Make this text coherent",
+                    "Rewrite to make this easier to understand",
+                    "Paraphrase this",
+                    "Write this more formally",
+                    "Write in a more neutral way",
+                ],
+                {"default": "Fix the grammar"},
+            ),
+            "system_instruction": (
+                "STRING",
+                {
+                    "default": "",
+                    "multiline": True,
+                    "placeholder": "System Prompt Text",
+                    "dynamicPrompts": True,
+                },
+            ),
+            "prompt": (
+                "STRING",
+                {
+                    "default": "When I grow up, I start to understand what he said is quite right.",
+                    "multiline": True,
+                    "placeholder": "Input Text",
+                    "dynamicPrompts": True,
+                },
+            ),
+        }
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("response",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Inference"
+
+    @classmethod
+    def execute(
+        cls,
+        predefined_system_instruction: str = "Fix the grammar",
+        system_instruction: str = "",
+        prompt: str = "When I grow up, I start to understand what he said is quite right.",
+        seed: int = 0,
+    ) -> tuple[str]:
+        from transformers import AutoTokenizer, T5ForConditionalGeneration
+
+        # Set seed
+        rng_state = torch.get_rng_state()
+        torch.manual_seed(seed)
+
+        tokenizer = AutoTokenizer.from_pretrained("grammarly/coedit-large")
+        model = T5ForConditionalGeneration.from_pretrained("grammarly/coedit-large")
+        input_text = f"{predefined_system_instruction or system_instruction}: {prompt}"
+        input_ids = tokenizer(input_text, return_tensors="pt").input_ids
+        outputs = model.generate(input_ids, max_length=256)
+        edited_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        # Reset seed
+        torch.set_rng_state(rng_state)
+
+        return (edited_text,)
+
+    @classmethod
+    def IS_CHANGED(
+        cls,
+        predefined_system_instruction: str = "Fix the grammar",
+        system_instruction: str = "",
+        prompt: str = "When I grow up, I start to understand what he said is quite right.",
+        seed: int = 0,
+    ) -> tuple:
+        return (predefined_system_instruction, system_instruction, prompt, seed)
+
+    @classmethod
+    def VALIDATE_INPUTS(
+        cls,
+        predefined_system_instruction: str = "Fix the grammar",
+        system_instruction: str = "",
+        prompt: str = "When I grow up, I start to understand what he said is quite right.",
+        seed: int = 0,
+    ) -> bool:
+        if (predefined_system_instruction or system_instruction) and prompt:
+            return True
+        else:
+            msg = "Either `predefined_system_instruction` or `system_instruction` and `prompt` must be provided."
+            logger.error(msg)
+            return False
+
+
 if __name__ == "__main__":
     # text = GeminiInference.execute(prompt="Hello, how are you?")
     text = OllamaInference.execute(

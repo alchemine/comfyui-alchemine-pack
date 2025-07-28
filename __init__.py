@@ -12,7 +12,7 @@ from .nodes.danbooru import (
     DanbooruPopularPostsTagsRetriever,
 )
 from .nodes.input import WidthHeight
-from .nodes.inference import GeminiInference, OllamaInference
+from .nodes.inference import GeminiInference, OllamaInference, TextEditingInference
 
 
 # A dictionary that contains all nodes you want to export with their names
@@ -30,6 +30,7 @@ NODE_CLASS_MAPPINGS = {
     "WidthHeight": WidthHeight,
     "GeminiInference": GeminiInference,
     "OllamaInference": OllamaInference,
+    "TextEditingInference": TextEditingInference,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -46,4 +47,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WidthHeight": "Width Height",
     "GeminiInference": "Gemini Inference",
     "OllamaInference": "Ollama Inference",
+    "TextEditingInference": "Text Editing Inference",
 }
