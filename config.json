@@ -1,0 +1,6 @@
+{
+  "inference": {
+    "gemini_api_key": "GEMINI_API_KEY",
+    "ollama_url": "http://localhost:11434"
+  }
+}
