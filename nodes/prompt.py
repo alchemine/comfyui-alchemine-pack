@@ -1,38 +1,10 @@
 import re
-import logging
 import textwrap
-from time import sleep
-from pathlib import Path
 from functools import wraps
 
 import yaml
 
-
-#################################################################
-# Logger setup
-#################################################################
-ROOT_DIR = Path(__file__).parent.parent
-CUSTOM_NODES_DIR = ROOT_DIR.parent
-RESOURCES_DIR = ROOT_DIR / "resources"
-WILDCARD_PATH = RESOURCES_DIR / "wildcards.yaml"
-
-
-def get_logger(name: str = __file__, level: int = logging.WARNING):
-    class RootNameFormatter(logging.Formatter):
-        def format(self, record):
-            record.name = str(Path(record.name).relative_to(CUSTOM_NODES_DIR))
-            return super().format(record)
-
-    logger = logging.getLogger(name)
-    logger.handlers.clear()
-    handler = logging.StreamHandler()
-    formatter = RootNameFormatter(
-        "[%(asctime)s] [%(levelname)s] %(name)s:%(lineno)d: %(message)s"
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(level)
-    return logger
+from .utils import WILDCARD_PATH, get_logger, exception_handler
 
 
 logger = get_logger()
@@ -41,20 +13,6 @@ logger = get_logger()
 #################################################################
 # Utility functions
 #################################################################
-def exception_handler(func):
-    """Handle unexpected exceptions in a function."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception:
-            logger.error(f"# Unexpected error in '{func.__name__}'", exc_info=True)
-            raise
-
-    return wrapper
-
-
 def log_prompt(func):
     """Log prompt input and output in a Unicode box table with class name, showing all lines. Now uses thinner lines, adds Node row, and prevents prompt truncation with word wrapping."""
 
@@ -108,30 +66,11 @@ def log_prompt(func):
     return wrapper
 
 
-def retry(func, retries: int = 3, delay: float = 1e-2, exceptions=(Exception,)):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        for attempt in range(retries):
-            try:
-                result = func(*args, **kwargs)
-                break
-            except exceptions:
-                if attempt < retries - 1:
-                    sleep(delay)
-                else:
-                    raise
-        return result
-
-    return wrapper
-
-
 #################################################################
 # Base class
 #################################################################
 class BasePrompt:
-    """Base class for prompt processing.
-
-    This class provides a base class for prompt processing."""
+    """Base class for Prompt nodes."""
 
     @staticmethod
     def normalize_tag(tag: str) -> str:
@@ -211,7 +150,6 @@ class ProcessTags(BasePrompt):
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
-            "custom_processor": ("BOOLEAN", {"default": True}),
             "replace_underscores": ("BOOLEAN", {"default": True}),
             "filter_tags": ("BOOLEAN", {"default": True}),
             "filter_subtags": ("BOOLEAN", {"default": True}),
@@ -231,7 +169,6 @@ class ProcessTags(BasePrompt):
     def execute(
         cls,
         text: str,
-        custom_processor: bool = True,
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
@@ -240,9 +177,6 @@ class ProcessTags(BasePrompt):
     ) -> tuple[str, list[str]]:
         """Process tags from a prompt."""
         filtered_tags_list = []
-
-        if custom_processor:
-            text = CustomProcessor.execute(text=text)[0]
 
         if replace_underscores:
             text = ReplaceUnderscores.execute(text=text)[0]
@@ -262,6 +196,25 @@ class ProcessTags(BasePrompt):
                 filtered_tags_list.append(cur_filtered_tags)
 
         return (text, filtered_tags_list)
+
+    @classmethod
+    def IS_CHANGED(
+        cls,
+        text: str,
+        replace_underscores: bool = True,
+        filter_tags: bool = True,
+        filter_subtags: bool = True,
+        blacklist_tags: str = "",
+        fixed_tags: str = "",
+    ) -> bool:
+        return (
+            text,
+            replace_underscores,
+            filter_tags,
+            filter_subtags,
+            blacklist_tags,
+            fixed_tags,
+        )
 
 
 class FilterTags(BasePrompt):
@@ -343,6 +296,12 @@ class FilterTags(BasePrompt):
         filtered_tags = ", ".join(filtered_tag_list)
         return (processed_text, filtered_tags)
 
+    @classmethod
+    def IS_CHANGED(
+        cls, text: str, blacklist_tags: str = "", fixed_tags: str = ""
+    ) -> tuple:
+        return (text, blacklist_tags, fixed_tags)
+
 
 class FilterSubtags(BasePrompt):
     """Filter subtags from a prompt.
@@ -420,6 +379,10 @@ class FilterSubtags(BasePrompt):
         filtered_tags = ", ".join(filtered_tag_list)
         return (processed_text, filtered_tags)
 
+    @classmethod
+    def IS_CHANGED(cls, text: str, fixed_tags: str = "") -> tuple:
+        return (text, fixed_tags)
+
 
 class ReplaceUnderscores(BasePrompt):
     """Replace underscores with spaces in a prompt.
@@ -447,9 +410,13 @@ class ReplaceUnderscores(BasePrompt):
         processed_text = text.replace("_", " ")
         return (processed_text,)
 
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
 
-class CustomProcessor(BasePrompt):
-    """Custom processor for a prompt.
+
+class FixBreakAfterTIPO(BasePrompt):
+    """Fix break after TIPO in a prompt.
 
     Examples:
         Input: tag, (BREAK:-1), tags
@@ -470,10 +437,14 @@ class CustomProcessor(BasePrompt):
     @exception_handler
     @log_prompt
     def execute(cls, text: str) -> tuple[str]:
-        """Custom processor for a prompt."""
-        # 1. Remove a weight of BREAK (fix TIPO output prompt)
+        """Fix break after TIPO in a prompt."""
+        # Remove a weight of BREAK (fix TIPO output prompt)
         processed_text = re.sub(r",?\s*\(BREAK:-1\),?\s*", " BREAK ", text)
         return (processed_text,)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
 
 
 class TokenAnalyzer(BasePrompt):
@@ -548,6 +519,10 @@ class TokenAnalyzer(BasePrompt):
             concat_tokens.append(cur_tokens)
 
         return concat_tokens
+
+    @classmethod
+    def IS_CHANGED(cls, clip, text) -> tuple:
+        return (clip, text)
 
 
 if __name__ == "__main__":

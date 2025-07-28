@@ -3,7 +3,7 @@ from .nodes.prompt import (
     FilterSubtags,
     FilterTags,
     ReplaceUnderscores,
-    CustomProcessor,
+    FixBreakAfterTIPO,
     TokenAnalyzer,
 )
 from .nodes.danbooru import (
@@ -22,7 +22,7 @@ NODE_CLASS_MAPPINGS = {
     "FilterTags": FilterTags,
     "FilterSubtags": FilterSubtags,
     "ReplaceUnderscores": ReplaceUnderscores,
-    "CustomProcessor": CustomProcessor,
+    "FixBreakAfterTIPO": FixBreakAfterTIPO,
     "TokenAnalyzer": TokenAnalyzer,
     "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
     "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
@@ -39,7 +39,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FilterTags": "Filter Tags",
     "FilterSubtags": "Filter Subtags",
     "ReplaceUnderscores": "Replace Underscores",
-    "CustomProcessor": "Custom Processor",
+    "FixBreakAfterTIPO": "Fix Break After TIPO",
     "TokenAnalyzer": "Token Analyzer",
     "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
     "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",

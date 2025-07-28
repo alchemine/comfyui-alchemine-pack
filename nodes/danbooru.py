@@ -1,141 +1,25 @@
 import re
-import logging
-import textwrap
 from math import ceil
-from time import sleep
-from pathlib import Path
-from random import sample
-from random import seed as random_seed
-from functools import wraps
+from random import Random
 from collections import defaultdict
 
 import aiohttp
 import asyncio
 import requests
 
-
-#################################################################
-# Logger setup
-#################################################################
-ROOT_DIR = Path(__file__).parent.parent
-CUSTOM_NODES_DIR = ROOT_DIR.parent
-
-
-def get_logger(name: str = __file__, level: int = logging.WARNING):
-    class RootNameFormatter(logging.Formatter):
-        def format(self, record):
-            record.name = str(Path(record.name).relative_to(CUSTOM_NODES_DIR))
-            return super().format(record)
-
-    logger = logging.getLogger(name)
-    logger.handlers.clear()
-    handler = logging.StreamHandler()
-    formatter = RootNameFormatter(
-        "[%(asctime)s] [%(levelname)s] %(name)s:%(lineno)d: %(message)s"
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(level)
-    return logger
+from .utils import get_logger
 
 
 logger = get_logger()
 
 
 #################################################################
-# Utility functions
-#################################################################
-def exception_handler(func):
-    """Handle unexpected exceptions in a function."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception:
-            logger.error(f"# Unexpected error in '{func.__name__}'", exc_info=True)
-            raise
-
-    return wrapper
-
-
-def log_prompt(func):
-    """Log prompt input and output in a Unicode box table with class name, showing all lines. Now uses thinner lines, adds Node row, and prevents prompt truncation with word wrapping."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        col_width1, col_width2 = [10, 100]
-
-        def format_multiline(label: str, text: str) -> str:
-            lines = text.splitlines() or [""]
-            out = []
-            first_row = True
-            for line in lines:
-                wrapped = textwrap.wrap(line, width=col_width2) or [""]
-                for i, wline in enumerate(wrapped):
-                    if first_row and i == 0:
-                        row = f"│ {label:<{col_width1-2}} │ {wline.ljust(col_width2)} │"
-                    else:
-                        row = f"│ {'':<{col_width1-2}} │ {wline.ljust(col_width2)} │"
-                    out.append(row)
-                    first_row = False
-            return "\n".join(out)
-
-        # Prepare inputs
-        node_label = args[0].__name__
-        input_val = kwargs["text"]
-        result = func(*args, **kwargs)
-        output_val = result[0]
-
-        # NOTE. 2: space for tags
-        top = f"┌{'─'*col_width1}┬{'─'*(2+col_width2)}┐"
-        mid = f"├{'─'*col_width1}┼{'─'*(2+col_width2)}┤"
-        bot = f"└{'─'*col_width1}┴{'─'*(2+col_width2)}┘"
-
-        # Prepare table content
-        node_row = format_multiline("Node", node_label)
-        before = format_multiline("Before", input_val)
-        after = format_multiline("After", output_val)
-        if len(result) > 1:
-            filtered_tags = result[1]
-            filtered = format_multiline("Filtered", filtered_tags)
-            contents = [node_row, before, after, filtered]
-        else:
-            contents = [node_row, before, after]
-
-        # Log
-        content = f"\n{mid}\n".join(contents)
-        table = f"{top}\n{content}\n{bot}"
-        logger.debug(f"\n{table}")
-        return result
-
-    return wrapper
-
-
-def retry(func, retries: int = 3, delay: float = 1e-2, exceptions=(Exception,)):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        for attempt in range(retries):
-            try:
-                result = func(*args, **kwargs)
-                break
-            except exceptions:
-                if attempt < retries - 1:
-                    sleep(delay)
-                else:
-                    raise
-        return result
-
-    return wrapper
-
-
-#################################################################
 # Base class
 #################################################################
-class BasePrompt:
-    """Base class for prompt processing.
+class BaseDanbooru:
+    """Base class for Danbooru nodes."""
 
-    This class provides a base class for prompt processing."""
+    REQUEST_CACHE = {}
 
     @staticmethod
     def normalize_tag(tag: str) -> str:
@@ -239,7 +123,7 @@ class BasePrompt:
 #################################################################
 # Nodes
 #################################################################
-class DanbooruRelatedTagsRetriever(BasePrompt):
+class DanbooruRelatedTagsRetriever(BaseDanbooru):
     """Retrieve related tags by frequency from Danbooru.
 
     Examples:
@@ -249,20 +133,14 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
 
     INPUT_TYPES = lambda: {
         "required": {
-            "text": ("STRING", {"forceInput": True}),
+            "text": ("STRING", {}),
             "category": (
-                "STRING",
-                {
-                    "default": "General",
-                    "choices": ["General", "Character", "Copyright", "Artist", "Meta"],
-                },
+                ["General", "Character", "Copyright", "Artist", "Meta"],
+                {"default": "General"},
             ),
             "order": (
-                "STRING",
-                {
-                    "default": "Frequency",
-                    "choices": ["Cosine", "Jaccard", "Overlap", "Frequency"],
-                },
+                ["Cosine", "Jaccard", "Overlap", "Frequency"],
+                {"default": "Frequency"},
             ),
             "threshold": ("FLOAT", {"default": 0.3}),
             "n_min_tags": ("INT", {"default": 0, "min": 0}),
@@ -272,10 +150,10 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("processed_text",)
     FUNCTION = "execute"
-    CATEGORY = "AlcheminePack/Prompt"
+    CATEGORY = "AlcheminePack/Danbooru"
 
     @classmethod
-    async def async_execute(
+    async def aexecute(
         cls,
         text: str,
         category: str = "General",
@@ -285,8 +163,6 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
         n_max_tags: int = 100,
     ) -> tuple[str]:
         """Retrieve related tags by frequency from Danbooru."""
-        base_url = "https://danbooru.donmai.us/related_tag.json?commit=Search&search[category]={category}&search[order]={order}&search[query]={query}"
-
         queries = []
         groups = text.split("BREAK")
         for group in groups:
@@ -295,18 +171,8 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
                 danbooru_tag = cls.convert_to_danbooru_tag(tag)
                 queries.append(danbooru_tag)
 
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for query in queries:
-                url = base_url.format(category=category, order=order, query=query)
-                tasks.append(session.get(url))
-            responses = await asyncio.gather(*tasks)
-            datas = []
-            for resp in responses:
-                resp.raise_for_status()
-                datas.append(await resp.json())
-
         result_tags = []
+        datas = await cls.arequest(queries, category, order)
         for query, data in zip(queries, datas):
             order_map = {
                 "Cosine": "cosine_similarity",
@@ -331,7 +197,7 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
             result_tags.append(cls.convert_from_danbooru_tag(query))
             result_tags.extend(related_tags_selected)
 
-        # 3. Remove duplicates while preserving order
+        # Remove duplicates while preserving order
         seen = set()
         ordered_unique_tags = []
         for tag in result_tags:
@@ -341,6 +207,37 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
 
         processed_text = ", ".join(ordered_unique_tags)
         return (processed_text,)
+
+    @classmethod
+    async def arequest(
+        cls, queries: list[str], category: str, order: str
+    ) -> list[dict]:
+        """Request Danbooru API."""
+        base_url = "https://danbooru.donmai.us/related_tag.json?commit=Search&search[category]={category}&search[order]={order}&search[query]={query}"
+
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            urls = []
+            for query in queries:
+                url = base_url.format(category=category, order=order, query=query)
+                urls.append(url)
+                if url in cls.REQUEST_CACHE:
+                    tasks.append(None)
+                else:
+                    tasks.append(session.get(url))
+
+            responses = []
+            for url, task in zip(urls, tasks):
+                if task is None:
+                    responses.append(cls.REQUEST_CACHE[url])
+                else:
+                    resp = await task
+                    resp.raise_for_status()
+                    json_data = await resp.json()
+                    cls.REQUEST_CACHE[url] = json_data
+                    responses.append(json_data)
+
+        return responses
 
     @classmethod
     def execute(
@@ -353,7 +250,7 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
         n_max_tags: int = 100,
     ) -> tuple[str]:
         return asyncio.run(
-            cls.async_execute(
+            cls.aexecute(
                 text=text,
                 category=category,
                 order=order,
@@ -362,6 +259,18 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
                 n_max_tags=n_max_tags,
             )
         )
+
+    @classmethod
+    def IS_CHANGED(
+        cls,
+        text: str,
+        category: str = "General",
+        order: str = "Frequency",
+        threshold: float = 0.5,
+        n_min_tags: int = 0,
+        n_max_tags: int = 100,
+    ) -> tuple:
+        return (text, category, order, threshold, n_min_tags, n_max_tags)
 
     @classmethod
     def VALIDATE_INPUTS(
@@ -380,17 +289,19 @@ class DanbooruRelatedTagsRetriever(BasePrompt):
             return False
 
 
-class DanbooruPostTagsRetriever(BasePrompt):
+class DanbooruPostTagsRetriever(BaseDanbooru):
     """Retrieve tags from a Danbooru post.
 
     Examples:
-        Input: 1234567890
-        Output: ray (arknights), animal ears, pantyhose
+        Input: 1
+        Output: kousaka tamaki, ...
+
+    NOTE: meta tags are excluded from full_tags
     """
 
     INPUT_TYPES = lambda: {
         "required": {
-            "post_id": ("STRING", {}),
+            "post_id": ("INT", {"min": 1}),
         }
     }
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
@@ -403,14 +314,16 @@ class DanbooruPostTagsRetriever(BasePrompt):
         "meta_tags",
     )
     FUNCTION = "execute"
-    CATEGORY = "AlcheminePack/Prompt"
+    CATEGORY = "AlcheminePack/Danbooru"
 
     @classmethod
-    def execute(cls, post_id: str) -> tuple[str, str, str, str, str, str]:
+    def execute(cls, post_id: int) -> tuple[str, str, str, str, str, str]:
         url = f"https://danbooru.donmai.us/posts/{post_id}.json"
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
+        if url not in cls.REQUEST_CACHE:
+            response = requests.get(url)
+            response.raise_for_status()
+            cls.REQUEST_CACHE[url] = response.json()
+        data = cls.REQUEST_CACHE[url]
 
         # tag_string
         convert = lambda key: ", ".join(
@@ -423,7 +336,6 @@ class DanbooruPostTagsRetriever(BasePrompt):
         meta_tags = convert("tag_string_meta")
 
         # NOTE: meta tags are excluded from full_tags
-        # full_tags = convert("tag_string")
         full_tags = ", ".join(
             [character_tags, copyright_tags, artist_tags, general_tags]
         )
@@ -438,19 +350,18 @@ class DanbooruPostTagsRetriever(BasePrompt):
         )
 
     @classmethod
-    def IS_CHANGED(cls, post_id: str) -> str:
+    def IS_CHANGED(cls, post_id: int) -> int:
         return post_id
 
 
-class DanbooruPopularPostsTagsRetriever(BasePrompt):
+class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
     """Retrieve popular posts' tags from Danbooru.
-
-    TODO: cache requests (Too Many Requests errors)
-    TODO: check score
 
     Examples:
         Input: date="2025-01-01", scale="day", n=1, random=True, seed=0
         Output: ray (arknights), animal ears, pantyhose
+
+    NOTE: meta tags are excluded from full_tags
     """
 
     INPUT_TYPES = lambda: {
@@ -476,7 +387,9 @@ class DanbooruPopularPostsTagsRetriever(BasePrompt):
     )
     OUTPUT_IS_LIST = (True, True, True, True, True, True)
     FUNCTION = "execute"
-    CATEGORY = "AlcheminePack/Prompt"
+    CATEGORY = "AlcheminePack/Danbooru"
+
+    N_POSTS_PER_POPULAR_PAGE = 20  # Basic level limit
 
     @classmethod
     def execute(
@@ -488,11 +401,11 @@ class DanbooruPopularPostsTagsRetriever(BasePrompt):
         seed: int = 0,
     ) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str]]:
         return asyncio.run(
-            cls.async_execute(date=date, scale=scale, n=n, random=random, seed=seed)
+            cls.aexecute(date=date, scale=scale, n=n, random=random, seed=seed)
         )
 
     @classmethod
-    async def async_execute(
+    async def aexecute(
         cls,
         date: str = "",
         scale: str = "day",
@@ -500,43 +413,10 @@ class DanbooruPopularPostsTagsRetriever(BasePrompt):
         random: bool = True,
         seed: int = 0,
     ) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str]]:
-        N_POSTS_PER_POPULAR_PAGE = 60
-
-        params = {}
-        if date:
-            params["date"] = date
-        if scale:
-            params["scale"] = scale
-
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-
-            if random:
-                # NOTE: Select `n` posts from `n` pages
-                n_pages = n
-            else:
-                n_pages = ceil(n / N_POSTS_PER_POPULAR_PAGE)
-            for page in range(n_pages):
-                params["page"] = page
-                params_str = (
-                    "?" + "&".join([f"{k}={v}" for k, v in params.items()])
-                    if params
-                    else ""
-                )
-                url = (
-                    f"https://danbooru.donmai.us/explore/posts/popular.json{params_str}"
-                )
-                tasks.append(session.get(url))
-            responses = await asyncio.gather(*tasks)
-
-            datas = []
-            for resp in responses:
-                resp.raise_for_status()
-                datas.extend(await resp.json())
-
+        # Set default values
+        datas = await cls.arequest(date, scale, n, random)
         if random:
-            random_seed(seed)
-            datas = sample(datas, n)
+            datas = Random(seed).sample(datas, n)
         else:
             datas = sorted(datas, key=lambda x: x["score"], reverse=True)
             datas = datas[:n]
@@ -554,7 +434,6 @@ class DanbooruPopularPostsTagsRetriever(BasePrompt):
             meta_tags = convert(data, "tag_string_meta")
 
             # NOTE: meta tags are excluded from full_tags
-            # full_tags = convert(data, "tag_string")
             full_tags = ", ".join(
                 [character_tags, copyright_tags, artist_tags, general_tags]
             )
@@ -573,6 +452,47 @@ class DanbooruPopularPostsTagsRetriever(BasePrompt):
             result["artist_tags"],
             result["meta_tags"],
         )
+
+    @classmethod
+    async def arequest(cls, date: str, scale: str, n: int, random: bool) -> list[dict]:
+        """Request Danbooru API.
+
+        NOTE: Select `n` posts from `n` pages
+        """
+        params = {}
+        if date:
+            params["date"] = date
+        if scale:
+            params["scale"] = scale
+
+        async with aiohttp.ClientSession() as session:
+            datas = []
+            if random:
+                n_pages = n
+            else:
+                n_pages = ceil(n / cls.N_POSTS_PER_POPULAR_PAGE)
+            for page in range(1, 1 + n_pages):
+                params["page"] = page
+                params_str = (
+                    "?" + "&".join([f"{k}={v}" for k, v in params.items()])
+                    if params
+                    else ""
+                )
+                url = (
+                    f"https://danbooru.donmai.us/explore/posts/popular.json{params_str}"
+                )
+
+                # Cache requests (avoid Too Many Requests errors)
+                if url in cls.REQUEST_CACHE:
+                    datas.extend(cls.REQUEST_CACHE[url])
+                else:
+                    resp = await session.get(url)
+                    resp.raise_for_status()
+                    json_data = await resp.json()
+                    cls.REQUEST_CACHE[url] = json_data
+                    datas.extend(json_data)
+
+        return datas
 
     @classmethod
     def IS_CHANGED(
@@ -595,6 +515,6 @@ if __name__ == "__main__":
     # )
     # result = DanbooruPostTagsRetriever.execute(post_id="9557805")
     result = DanbooruPopularPostsTagsRetriever.execute(
-        date="", scale="day", n=2, random=False, seed=0
+        date="", scale="day", n=1, random=False, seed=0
     )
     print(result[0])

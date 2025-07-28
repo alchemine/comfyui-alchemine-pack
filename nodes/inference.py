@@ -1,135 +1,16 @@
 import re
-import json
-import logging
-import textwrap
 from io import BytesIO
-from time import sleep
-from pathlib import Path
 from base64 import b64encode
-from functools import wraps, lru_cache
+from functools import lru_cache
 
 import torch
 import requests
 import numpy as np
 from PIL import Image
-from google import genai
-from google.genai.types import GenerateContentConfig, ThinkingConfig
 
-
-#################################################################
-# Logger setup
-#################################################################
-ROOT_DIR = Path(__file__).parent.parent
-CUSTOM_NODES_DIR = ROOT_DIR.parent
-CONFIG = json.load(open(ROOT_DIR / "config.json"))
-
-
-def get_logger(name: str = __file__, level: int = logging.WARNING):
-    class RootNameFormatter(logging.Formatter):
-        def format(self, record):
-            record.name = str(Path(record.name).relative_to(CUSTOM_NODES_DIR))
-            return super().format(record)
-
-    logger = logging.getLogger(name)
-    logger.handlers.clear()
-    handler = logging.StreamHandler()
-    formatter = RootNameFormatter(
-        "[%(asctime)s] [%(levelname)s] %(name)s:%(lineno)d: %(message)s"
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(level)
-    return logger
-
+from .utils import get_logger, CONFIG
 
 logger = get_logger()
-
-
-#################################################################
-# Utility functions
-#################################################################
-def exception_handler(func):
-    """Handle unexpected exceptions in a function."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception:
-            logger.error(f"# Unexpected error in '{func.__name__}'", exc_info=True)
-            raise
-
-    return wrapper
-
-
-def log_prompt(func):
-    """Log prompt input and output in a Unicode box table with class name, showing all lines. Now uses thinner lines, adds Node row, and prevents prompt truncation with word wrapping."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        col_width1, col_width2 = [10, 100]
-
-        def format_multiline(label: str, text: str) -> str:
-            lines = text.splitlines() or [""]
-            out = []
-            first_row = True
-            for line in lines:
-                wrapped = textwrap.wrap(line, width=col_width2) or [""]
-                for i, wline in enumerate(wrapped):
-                    if first_row and i == 0:
-                        row = f"│ {label:<{col_width1-2}} │ {wline.ljust(col_width2)} │"
-                    else:
-                        row = f"│ {'':<{col_width1-2}} │ {wline.ljust(col_width2)} │"
-                    out.append(row)
-                    first_row = False
-            return "\n".join(out)
-
-        # Prepare inputs
-        node_label = args[0].__name__
-        input_val = kwargs["text"]
-        result = func(*args, **kwargs)
-        output_val = result[0]
-
-        # NOTE. 2: space for tags
-        top = f"┌{'─'*col_width1}┬{'─'*(2+col_width2)}┐"
-        mid = f"├{'─'*col_width1}┼{'─'*(2+col_width2)}┤"
-        bot = f"└{'─'*col_width1}┴{'─'*(2+col_width2)}┘"
-
-        # Prepare table content
-        node_row = format_multiline("Node", node_label)
-        before = format_multiline("Before", input_val)
-        after = format_multiline("After", output_val)
-        if len(result) > 1:
-            filtered_tags = result[1]
-            filtered = format_multiline("Filtered", filtered_tags)
-            contents = [node_row, before, after, filtered]
-        else:
-            contents = [node_row, before, after]
-
-        # Log
-        content = f"\n{mid}\n".join(contents)
-        table = f"{top}\n{content}\n{bot}"
-        logger.debug(f"\n{table}")
-        return result
-
-    return wrapper
-
-
-def retry(func, retries: int = 3, delay: float = 1e-2, exceptions=(Exception,)):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        for attempt in range(retries):
-            try:
-                result = func(*args, **kwargs)
-                break
-            except exceptions:
-                if attempt < retries - 1:
-                    sleep(delay)
-                else:
-                    raise
-        return result
-
-    return wrapper
 
 
 #################################################################
@@ -137,6 +18,8 @@ def retry(func, retries: int = 3, delay: float = 1e-2, exceptions=(Exception,)):
 #################################################################
 class BaseInference:
     """Base class for Inference nodes."""
+
+    REQUEST_CACHE = {}
 
     @staticmethod
     def encode_image(image: torch.Tensor, return_bytes: bool = False) -> bytes | str:
@@ -159,15 +42,10 @@ class BaseInference:
 # Nodes
 #################################################################
 class GeminiInference(BaseInference):
-    """Gemini inference.
-
-    TODO: fix 'think' argument
-    TODO: should 'image_url' argument be needed?
-    """
+    """Gemini inference."""
 
     INPUT_TYPES = lambda: {
         "required": {
-            "image": ("IMAGE", {"default": None}),
             "system_instruction": (
                 "STRING",
                 {
@@ -180,7 +58,7 @@ class GeminiInference(BaseInference):
             "prompt": (
                 "STRING",
                 {
-                    "default": "#1: They are standing",
+                    "default": "Hello, world!",
                     "multiline": True,
                     "placeholder": "Prompt Text",
                     "dynamicPrompts": True,
@@ -190,8 +68,12 @@ class GeminiInference(BaseInference):
             "model": ("STRING", {"default": "latest"}),
             "max_output_tokens": ("INT", {"default": 100, "min": 1}),
             "seed": ("INT", {"default": 0, "min": 0}),
-            # "think": ("BOOLEAN", {"default": False}),
-        }
+            "think": ("BOOLEAN", {"default": False}),
+            "candidate_count": ("INT", {"default": 1, "min": 1}),
+        },
+        "optional": {
+            "image": ("IMAGE", {"default": None}),
+        },
     }
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("response",)
@@ -203,17 +85,14 @@ class GeminiInference(BaseInference):
         cls,
         image: list[torch.Tensor] | None = None,
         system_instruction: str = "You are a helpful assistant.",
-        prompt: str = "",
+        prompt: str = "Hello, world!",
         gemini_api_key: str = "",
         model: str = "latest",
         max_output_tokens: int = 100,
         seed: int = 0,
-        # image_url: str | None = None,
-        # think: bool = False,
+        think: bool = False,
+        candidate_count: int = 1,
     ) -> tuple[str]:
-        # NOTE: Avoid the prohibited content by generating multiple candidates
-        N_CANDIDATES = 8  # 8 is the max
-
         # Add image tokens
         parts = []
         if image is not None:
@@ -226,6 +105,20 @@ class GeminiInference(BaseInference):
         prompt = f"{prompt}\n---\n결과는 {max_output_tokens//2}개의 단어 이내로 작성해주세요."
         parts.append({"text": prompt})
 
+        # Caching request
+        cache_key = (
+            str(parts),
+            system_instruction,
+            gemini_api_key,
+            model,
+            max_output_tokens,
+            seed,
+            think,
+            candidate_count,
+        )
+        if cache_key in cls.REQUEST_CACHE:
+            return (cls.REQUEST_CACHE[cache_key],)
+
         # Generate response
         client = cls.get_client(gemini_api_key)
         response = client.models.generate_content(
@@ -236,7 +129,8 @@ class GeminiInference(BaseInference):
                 model,
                 max_output_tokens,
                 seed,
-                candidate_count=N_CANDIDATES,
+                think=think,
+                candidate_count=candidate_count,
             ),
         )
 
@@ -273,15 +167,21 @@ class GeminiInference(BaseInference):
                 )
             ]
 
-        warning_msg = f"{N_CANDIDATES-len(valid_candidates)}/{N_CANDIDATES} candidates are prohibited."
+        warning_msg = f"{candidate_count-len(valid_candidates)}/{candidate_count} candidates are prohibited."
         if valid_candidates:
             # Select the first valid candidate
-            result = valid_candidates[0].content.parts[0].text
+            valid_candidate = valid_candidates[0]
+            result = valid_candidate.content.parts[0].text
+            if result == "" and think and valid_candidate.finish_reason == "MAX_TOKENS":
+                msg = f"More 'max_output_tokens' is needed to generate a response in thinking mode."
+                logger.error(msg)
+                raise ValueError(msg)
             logger.warning(warning_msg)
         else:
             # NOTE: Fallback to Gemini 2.0 Flash if all candidates are prohibited
             fallback_model = "models/gemini-2.0-flash"
             if model != fallback_model:
+                # NOTE: Avoid the prohibited content by generating multiple candidates
                 return cls.execute(
                     image=image,
                     prompt=prompt,
@@ -290,12 +190,14 @@ class GeminiInference(BaseInference):
                     model=fallback_model,
                     max_output_tokens=max_output_tokens,
                     seed=seed,
+                    think=think,
+                    candidate_count=8,  # 8 is the max
                 )
-
             msg = f"No valid candidates found. {warning_msg}"
             logger.error(msg)
             raise ValueError(msg)
 
+        cls.REQUEST_CACHE[cache_key] = result
         return (result,)
 
     @classmethod
@@ -303,12 +205,13 @@ class GeminiInference(BaseInference):
         cls,
         image: list[torch.Tensor] | None = None,
         system_instruction: str = "You are a helpful assistant.",
-        prompt: str = "",
+        prompt: str = "Hello, world!",
         gemini_api_key: str = "",
         model: str = "latest",
         max_output_tokens: int = 100,
         seed: int = 0,
-        # think: bool = False,
+        think: bool = False,
+        candidate_count: int = 1,
     ) -> tuple:
         return (
             image,
@@ -318,14 +221,17 @@ class GeminiInference(BaseInference):
             model,
             max_output_tokens,
             seed,
-            # think,
+            think,
+            candidate_count,
         )
 
     @staticmethod
     @lru_cache
     def get_client(
         gemini_api_key: str = "",
-    ) -> genai.Client:
+    ):
+        from google import genai
+
         if not gemini_api_key:
             try:
                 gemini_api_key = CONFIG["inference"]["gemini_api_key"]
@@ -337,7 +243,7 @@ class GeminiInference(BaseInference):
 
     @classmethod
     @lru_cache
-    def get_latest_model(cls, client: genai.Client) -> str:
+    def get_latest_model(cls, client) -> str:
         """Get the latest model."""
         GEMIMI_MODEL_NAME_PATTERN = r"^models/gemini-[\d\.]+-flash$"
 
@@ -354,14 +260,16 @@ class GeminiInference(BaseInference):
     @classmethod
     def get_config(
         cls,
-        client: genai.Client,
+        client,
         system_instruction: str,
         model: str = "latest",
         max_output_tokens: int = 100,
         seed: int = 0,
-        candidate_count: int = 1,
         think: bool = False,
+        candidate_count: int = 1,
     ) -> dict:
+        from google.genai.types import GenerateContentConfig, ThinkingConfig
+
         if model == "latest":
             model = cls.get_latest_model(client)
 
@@ -369,7 +277,7 @@ class GeminiInference(BaseInference):
             "model": model,
             "config": GenerateContentConfig(
                 system_instruction=system_instruction,
-                thinking_config=None if think else ThinkingConfig(thinking_budget=0),
+                thinking_config=ThinkingConfig(thinking_budget=-1 if think else 0),
                 max_output_tokens=max_output_tokens,
                 seed=seed,
                 candidate_count=candidate_count,
@@ -388,7 +296,6 @@ class OllamaInference(BaseInference):
 
     INPUT_TYPES = lambda: {
         "required": {
-            "image": ("IMAGE", {"default": None}),
             "system_instruction": (
                 "STRING",
                 {
@@ -401,7 +308,7 @@ class OllamaInference(BaseInference):
             "prompt": (
                 "STRING",
                 {
-                    "default": "#1: They are standing",
+                    "default": "Hello, world!",
                     "multiline": True,
                     "placeholder": "Prompt Text",
                     "dynamicPrompts": True,
@@ -412,7 +319,10 @@ class OllamaInference(BaseInference):
             "max_output_tokens": ("INT", {"default": 100, "min": 1}),
             "seed": ("INT", {"default": 0, "min": 0}),
             "think": ("BOOLEAN", {"default": False}),
-        }
+        },
+        "optional": {
+            "image": ("IMAGE", {"default": None}),
+        },
     }
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("response",)
@@ -424,7 +334,7 @@ class OllamaInference(BaseInference):
         cls,
         image: list[torch.Tensor] | None = None,
         system_instruction: str = "You are a helpful assistant.",
-        prompt: str = "",
+        prompt: str = "Hello, world!",
         ollama_url: str = "",
         model: str = "",
         max_output_tokens: int = 100,
@@ -441,6 +351,19 @@ class OllamaInference(BaseInference):
 
         # Add text content
         user_message["content"] = prompt
+
+        # Caching request
+        cache_key = (
+            str(user_message),
+            system_instruction,
+            ollama_url,
+            model,
+            max_output_tokens,
+            seed,
+            think,
+        )
+        if cache_key in cls.REQUEST_CACHE:
+            return (cls.REQUEST_CACHE[cache_key],)
 
         # Check if the model is available
         ollama_url = ollama_url or CONFIG["inference"]["ollama_url"]
@@ -477,6 +400,7 @@ class OllamaInference(BaseInference):
         response.raise_for_status()
         result = response.json()["message"]["content"]
 
+        cls.REQUEST_CACHE[cache_key] = result
         return (result,)
 
     @classmethod
@@ -484,7 +408,7 @@ class OllamaInference(BaseInference):
         cls,
         image: list[torch.Tensor] | None = None,
         system_instruction: str = "You are a helpful assistant.",
-        prompt: str = "",
+        prompt: str = "Hello, world!",
         ollama_url: str = "",
         model: str = "",
         max_output_tokens: int = 100,
@@ -543,6 +467,7 @@ class TextEditingInference(BaseInference):
                     "dynamicPrompts": True,
                 },
             ),
+            "seed": ("INT", {"default": 0, "min": 0}),
         }
     }
     RETURN_TYPES = ("STRING",)
@@ -564,6 +489,13 @@ class TextEditingInference(BaseInference):
         rng_state = torch.get_rng_state()
         torch.manual_seed(seed)
 
+        # Caching request
+        cache_key = (predefined_system_instruction, system_instruction, prompt, seed)
+        if cache_key in cls.REQUEST_CACHE:
+            edited_text = cls.REQUEST_CACHE[cache_key]
+            torch.set_rng_state(rng_state)
+            return (edited_text,)
+
         tokenizer = AutoTokenizer.from_pretrained("grammarly/coedit-large")
         model = T5ForConditionalGeneration.from_pretrained("grammarly/coedit-large")
         input_text = f"{predefined_system_instruction or system_instruction}: {prompt}"
@@ -574,6 +506,7 @@ class TextEditingInference(BaseInference):
         # Reset seed
         torch.set_rng_state(rng_state)
 
+        cls.REQUEST_CACHE[cache_key] = edited_text
         return (edited_text,)
 
     @classmethod
@@ -603,11 +536,12 @@ class TextEditingInference(BaseInference):
 
 
 if __name__ == "__main__":
-    # text = GeminiInference.execute(prompt="Hello, how are you?")
-    text = OllamaInference.execute(
-        prompt="Hello, how are you?",
-        model="qwen3:0.6b",
-        think=True,
-        max_output_tokens=1000,
-    )
+    text = GeminiInference.execute(prompt="Hello, how are you?")
     print(text)
+    # text = OllamaInference.execute(
+    #     prompt="Hello, how are you?",
+    #     model="qwen3:0.6b",
+    #     think=True,
+    #     max_output_tokens=1000,
+    # )
+    # print(text)
