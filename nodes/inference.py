@@ -519,21 +519,6 @@ class TextEditingInference(BaseInference):
     ) -> tuple:
         return (predefined_system_instruction, system_instruction, prompt, seed)
 
-    @classmethod
-    def VALIDATE_INPUTS(
-        cls,
-        predefined_system_instruction: str = "Fix the grammar",
-        system_instruction: str = "",
-        prompt: str = "When I grow up, I start to understand what he said is quite right.",
-        seed: int = 0,
-    ) -> bool:
-        if (predefined_system_instruction or system_instruction) and prompt:
-            return True
-        else:
-            msg = "Either `predefined_system_instruction` or `system_instruction` and `prompt` must be provided."
-            logger.error(msg)
-            return False
-
 
 if __name__ == "__main__":
     text = GeminiInference.execute(prompt="Hello, how are you?")

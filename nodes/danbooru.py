@@ -272,22 +272,6 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
     ) -> tuple:
         return (text, category, order, threshold, n_min_tags, n_max_tags)
 
-    @classmethod
-    def VALIDATE_INPUTS(
-        cls,
-        text: str,
-        category: str = "General",
-        order: str = "Frequency",
-        threshold: float = 0.5,
-        n_min_tags: int = 0,
-        n_max_tags: int = 100,
-    ) -> bool:
-        if n_min_tags <= n_max_tags:
-            return True
-        else:
-            logger.error("n_min_tags must be less than or equal to n_max_tags")
-            return False
-
 
 class DanbooruPostTagsRetriever(BaseDanbooru):
     """Retrieve tags from a Danbooru post.
