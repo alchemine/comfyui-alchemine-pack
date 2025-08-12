@@ -138,6 +138,25 @@ class BasePrompt:
             pass
         return tag
 
+    @classmethod
+    def adjust_fixed_tags(cls, text: str, fixed_tags: str) -> str:
+        """Adjust fixed tags to be in the same order as tags in the text."""
+        if fixed_tags:
+            fixed_tags_set = set(
+                [
+                    cls.normalize_tag(t)
+                    for t in re.split(r"BREAK|,", fixed_tags)
+                    if t.strip()
+                ]
+            )
+            tags_set = set(
+                [cls.normalize_tag(t) for t in re.split(r"BREAK|,", text) if t.strip()]
+            )
+            added_texts = ", ".join(fixed_tags_set - tags_set)
+            text = f"{added_texts}, {text}"
+
+        return text
+
 
 #################################################################
 # Nodes
@@ -176,6 +195,8 @@ class ProcessTags(BasePrompt):
         fixed_tags: str = "",
     ) -> tuple[str, list[str]]:
         """Process tags from a prompt."""
+        text = cls.adjust_fixed_tags(text, fixed_tags)
+
         filtered_tags_list = []
 
         if replace_underscores:
@@ -242,6 +263,7 @@ class FilterTags(BasePrompt):
     ) -> tuple[str, str]:
         """Filter blacklisted tags from a prompt."""
         # 1. Split tokens by BREAK
+        text = cls.adjust_fixed_tags(text, fixed_tags)
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -333,6 +355,7 @@ class FilterSubtags(BasePrompt):
     def execute(cls, text: str, fixed_tags: str = "") -> tuple[str, str]:
         """Filter subtags from a prompt."""
         # 1. Split tokens by BREAK
+        text = cls.adjust_fixed_tags(text, fixed_tags)
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
