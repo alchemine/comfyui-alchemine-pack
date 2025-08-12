@@ -153,7 +153,7 @@ class BasePrompt:
                 [cls.normalize_tag(t) for t in re.split(r"BREAK|,", text) if t.strip()]
             )
             added_texts = ", ".join(fixed_tags_set - tags_set)
-            text = f"{added_texts}, {text}"
+            text = f"{text}, {added_texts}"
 
         return text
 
