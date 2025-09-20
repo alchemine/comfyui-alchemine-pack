@@ -91,17 +91,17 @@ class BasePrompt:
 
             Input: [[cat]]
             Output: (cat:0.81)
-
-            Input: (cat:1.2:1.3)
-            Output: (cat:1.20:1.30)
         """
         tag = tag.strip()
         if match := re.search(r"^\(([^()]+):([-0-9. ]+)\)$", tag):
             # Example: (cat:1.20)
             tag, weight = match.groups()
-        elif match := re.search(r"^\(([^()]+):([0-9. ]+):([0-9. ]+)\)$", tag):
-            # Example: (cat:1.20:1.30)
-            tag, weight_s, weight_e = match.groups()
+        # NOTE: not used
+        # elif match := re.search(r"^\(([^()]+):([0-9. ]+):([0-9. ]+)\)$", tag):
+        #     # Input: (cat:1.2:1.3)
+        #     # Output: (cat:1.20:1.30)
+        #     # Example: (cat:1.20:1.30)
+        #     tag, weight_s, weight_e = match.groups()
         elif re.match(r"^[^\(\[]", tag):
             # Example: cat
             pass
@@ -138,9 +138,49 @@ class BasePrompt:
             pass
         return tag
 
+    @staticmethod
+    def unwrap_weights(text: str) -> str:
+        """Unwrap weights in a text.
+
+        Examples:
+            Input: (cat, dog:1.2)
+            Output: (cat:1.2), (dog:1.2)
+
+            Input: (cat, dog)
+            Output: (cat:1.1), (dog:1.1)
+        """
+
+        def expand_grouped_weights(match):
+            tags = [tag.strip() for tag in match.group(1).split(",")]
+            weight = match.group(2)
+            expanded = ", ".join(f"({tag}:{weight})" for tag in tags)
+            return expanded
+
+        def expand_grouped_no_weights(match):
+            tags = [tag.strip() for tag in match.group(1).split(",")]
+            # Default weight for grouped tags without explicit weight
+            expanded = ", ".join(f"({tag}:1.1)" for tag in tags)
+            return expanded
+
+        # Pattern for groups with weight: (tag1, tag2:weight)
+        pattern_with_weight = r"\(([^:,()]+(?:,\s*[^:,()]+)*):([^)]+)\)"
+        text = re.sub(pattern_with_weight, expand_grouped_weights, text)
+
+        # Pattern for groups without weight: (tag1, tag2)
+        pattern_no_weight = r"\(([^:,()]+(?:,\s*[^:,()]+)+)\)"
+        text = re.sub(pattern_no_weight, expand_grouped_no_weights, text)
+
+        return text
+
     @classmethod
-    def adjust_fixed_tags(cls, text: str, fixed_tags: str) -> str:
+    def adjust_fixed_tags(cls, text: str, fixed_tags: str) -> tuple[str, str]:
         """Adjust fixed tags to be in the same order as tags in the text."""
+        # Preprocess texts
+        text = re.sub(r"(\(?BREAK:?[-\d.]*\)?)", "BREAK", text)
+        text = cls.unwrap_weights(text)
+        fixed_tags = re.sub(r"(\(?BREAK:?[-\d.]*\)?)", "BREAK", fixed_tags)
+        fixed_tags = cls.unwrap_weights(fixed_tags)
+
         if fixed_tags:
             fixed_tags_set = set(
                 [
@@ -155,7 +195,7 @@ class BasePrompt:
             added_texts = ", ".join(fixed_tags_set - tags_set)
             text = f"{text}, {added_texts}"
 
-        return text
+        return text, fixed_tags
 
 
 #################################################################
@@ -195,7 +235,7 @@ class ProcessTags(BasePrompt):
         fixed_tags: str = "",
     ) -> tuple[str, list[str]]:
         """Process tags from a prompt."""
-        text = cls.adjust_fixed_tags(text, fixed_tags)
+        text, fixed_tags = cls.adjust_fixed_tags(text, fixed_tags)
 
         filtered_tags_list = []
 
@@ -263,7 +303,7 @@ class FilterTags(BasePrompt):
     ) -> tuple[str, str]:
         """Filter blacklisted tags from a prompt."""
         # 1. Split tokens by BREAK
-        text = cls.adjust_fixed_tags(text, fixed_tags)
+        text, fixed_tags = cls.adjust_fixed_tags(text, fixed_tags)
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -355,7 +395,7 @@ class FilterSubtags(BasePrompt):
     def execute(cls, text: str, fixed_tags: str = "") -> tuple[str, str]:
         """Filter subtags from a prompt."""
         # 1. Split tokens by BREAK
-        text = cls.adjust_fixed_tags(text, fixed_tags)
+        text, fixed_tags = cls.adjust_fixed_tags(text, fixed_tags)
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -549,12 +589,14 @@ class TokenAnalyzer(BasePrompt):
 
 
 if __name__ == "__main__":
+    text = "(drunk, beer), full-face blush, sleepy, closed eyes, squeans, table, sitting, pussy juice, skirt lift, panties around one leg"
     result = ProcessTags.execute(
-        "fisheye, (BREAK:-1), cat, dogs, (cat:0.9), (cat:1.1), black cat, (black cat)",
+        text,
         blacklist_tags="__color__ eyes, hello",
-        fixed_tags="cat, dogs, (cat:0.9), (cat:1.1), black cat, (black cat)",
+        fixed_tags=text,
         replace_underscores=True,
         filter_tags=True,
         filter_subtags=True,
     )
-    print(result)
+    print(result[0])
+    print(result[1])
