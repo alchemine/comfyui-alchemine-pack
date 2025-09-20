@@ -4,7 +4,7 @@ from functools import wraps
 
 import yaml
 
-from .utils import WILDCARD_PATH, get_logger, exception_handler
+from .utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
 
 
 logger = get_logger()
@@ -96,12 +96,6 @@ class BasePrompt:
         if match := re.search(r"^\(([^()]+):([-0-9. ]+)\)$", tag):
             # Example: (cat:1.20)
             tag, weight = match.groups()
-        # NOTE: not used
-        # elif match := re.search(r"^\(([^()]+):([0-9. ]+):([0-9. ]+)\)$", tag):
-        #     # Input: (cat:1.2:1.3)
-        #     # Output: (cat:1.20:1.30)
-        #     # Example: (cat:1.20:1.30)
-        #     tag, weight_s, weight_e = match.groups()
         elif re.match(r"^[^\(\[]", tag):
             # Example: cat
             pass
@@ -138,60 +132,6 @@ class BasePrompt:
             pass
         return tag
 
-    @staticmethod
-    def unwrap_weights(text: str) -> str:
-        """Unwrap weights in a text.
-
-        Examples:
-            Input: (cat, dog:1.2)
-            Output: (cat:1.2), (dog:1.2)
-
-            Input: (cat, dog)
-            Output: (cat:1.1), (dog:1.1)
-
-            Input: (cat, dog, :3)
-            Output: (cat:1.1), (dog:1.1), (:3:1.1)
-
-            Input: (cat, :3, dog)
-            Output: (cat:1.1), (:3:1.1), (dog:1.1)
-
-            Input: (cat, :3, dog:1.2)
-            Output: (cat:1.2), (:3:1.2), (dog:1.2)
-
-            Input: (happy, drunk, :3:1.3)
-            Output: (happy:1.3), (drunk:1.3), (:3:1.3)
-        """
-
-        def expand_grouped_weights(match):
-            if match.group(1).strip().endswith(","):
-                # NOTE: (happy, :3) -> (happy:1.1), (:3:1.1)
-                raw_text = re.sub(r"(\s*\(\s*|\s*\)\s*)", "", match.group())
-                tags = [tag.strip() for tag in raw_text.split(",")]
-                expanded = ", ".join(f"({tag}:1.1)" for tag in tags)
-            else:
-                weight = match.group(2)
-                tags = [tag.strip() for tag in match.group(1).split(",")]
-                expanded = ", ".join(f"({tag}:{weight})" for tag in tags)
-            return expanded
-
-        def expand_grouped_no_weights(match):
-            tags = [tag.strip() for tag in match.group(1).split(",")]
-            # Default weight for grouped tags without explicit weight
-            expanded = ", ".join(f"({tag}:1.1)" for tag in tags)
-            return expanded
-
-        # Pattern for groups with weight: (tag1, tag2:weight) or (tag1, tag2:weight1:weight2)
-        # Match groups ending with :number or :number:number (e.g., (tag1, tag2:1.2) or (tag1, :3:1.3))
-        pattern_with_weight = r"\(([^()]+):([\d.-]+(?::[\d.-]+)*)\)"
-        text = re.sub(pattern_with_weight, expand_grouped_weights, text)
-
-        # Pattern for groups without weight: (tag1, tag2)
-        # Match groups with commas but no trailing :number
-        pattern_no_weight = r"\(([^()]+(?:,\s*[^()]+)+)\)(?!:[\d.-]+)"
-        text = re.sub(pattern_no_weight, expand_grouped_no_weights, text)
-
-        return text
-
     @classmethod
     def preprocess_tags(cls, text: str, fixed_tags: str) -> tuple[str, str]:
         """Adjust fixed tags to be in the same order as tags in the text."""
@@ -200,22 +140,36 @@ class BasePrompt:
         fixed_tags = re.sub(r"(\(?BREAK:?[-\d.]*\)?)", "BREAK", fixed_tags)
 
         # 2. Unwrap weights
-        text = cls.unwrap_weights(text)
-        fixed_tags = cls.unwrap_weights(fixed_tags)
+        text = standardize_prompt(text)
+        fixed_tags = standardize_prompt(fixed_tags)
 
+        # 3. Adjust fixed tags
         if fixed_tags:
-            fixed_tags_set = set(
-                [
-                    cls.normalize_tag(t)
-                    for t in re.split(r"BREAK|,", fixed_tags)
-                    if t.strip()
-                ]
+            fixed_tags_set, fixed_tags_map = [], {}
+            for t in re.split(r"BREAK|,", fixed_tags):
+                if not t.strip():
+                    continue
+                normalized_tag = cls.normalize_tag(t)
+                if normalized_tag not in fixed_tags_map:
+                    fixed_tags_set.append(normalized_tag)
+                    fixed_tags_map[normalized_tag] = t
+
+            input_tags_set, input_tags_map = [], {}
+            for t in re.split(r"BREAK|,", text):
+                if not t.strip():
+                    continue
+                normalized_tag = cls.normalize_tag(t)
+                if normalized_tag not in input_tags_map:
+                    input_tags_set.append(normalized_tag)
+                    input_tags_map[normalized_tag] = t
+
+            added_texts = ",".join(
+                [input_tags_map[t] for t in input_tags_set if t not in fixed_tags_set]
             )
-            tags_set = set(
-                [cls.normalize_tag(t) for t in re.split(r"BREAK|,", text) if t.strip()]
-            )
-            added_texts = ", ".join(fixed_tags_set - tags_set)
-            text = f"{text}, {added_texts}"
+            if added_texts:
+                text = f"{fixed_tags},{added_texts}"
+            else:
+                text = fixed_tags
 
         return text, fixed_tags
 
@@ -266,14 +220,17 @@ class ProcessTags(BasePrompt):
 
         if filter_tags:
             text, cur_filtered_tags = FilterTags.execute(
-                text=text, blacklist_tags=blacklist_tags, fixed_tags=fixed_tags
+                text=text,
+                blacklist_tags=blacklist_tags,
+                fixed_tags=fixed_tags,
+                preprocess=False,
             )
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
 
         if filter_subtags:
             text, cur_filtered_tags = FilterSubtags.execute(
-                text=text, fixed_tags=fixed_tags
+                text=text, fixed_tags=fixed_tags, preprocess=False
             )
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
@@ -321,11 +278,16 @@ class FilterTags(BasePrompt):
     @exception_handler
     @log_prompt
     def execute(
-        cls, text: str, blacklist_tags: str = "", fixed_tags: str = ""
+        cls,
+        text: str,
+        blacklist_tags: str = "",
+        fixed_tags: str = "",
+        preprocess: bool = True,
     ) -> tuple[str, str]:
         """Filter blacklisted tags from a prompt."""
         # 1. Split tokens by BREAK
-        text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
+        if preprocess:
+            text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -363,7 +325,11 @@ class FilterTags(BasePrompt):
             ]
             valid_idxs = []
             for idx, tag in comp_tags:
-                if (tag in fixed_tags_set) or not compiled_blacklist.search(tag):
+                if (
+                    (tag in fixed_tags_set)
+                    or not blacklist_tags
+                    or (blacklist_tags and not compiled_blacklist.search(tag))
+                ):
                     valid_idxs.append(idx)
             new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
             new_groups.append(new_group.strip())
@@ -414,10 +380,13 @@ class FilterSubtags(BasePrompt):
     @classmethod
     @exception_handler
     @log_prompt
-    def execute(cls, text: str, fixed_tags: str = "") -> tuple[str, str]:
+    def execute(
+        cls, text: str, fixed_tags: str = "", preprocess: bool = True
+    ) -> tuple[str, str]:
         """Filter subtags from a prompt."""
         # 1. Split tokens by BREAK
-        text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
+        if preprocess:
+            text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -614,11 +583,12 @@ if __name__ == "__main__":
     # text = "(drunk, beer), full-face blush"
     # text = "(happy, drunk, :3), (drunk, beer), full-face blush"
     # text = "(happy, drunk, :3:1.3), (beer, can), full-face blush"
-    text = "(happy, :3, drunk:1.3), (:>, can, :<), full-face blush"
+    # text = "(happy, :3, drunk:1.3), (:>, can, :<), full-face blush"
+    # text = "(wariza), :3, palace, marble \\(stone\\), curtains, garden, fountain, plant, flower, lanterns"
+    text = "(e, f), h, i"
     result = ProcessTags.execute(
         text,
-        blacklist_tags="__color__ eyes, hello",
-        fixed_tags=text,
+        fixed_tags="(a, (c, d), :3), (e, f), g",
         replace_underscores=True,
         filter_tags=True,
         filter_subtags=True,
