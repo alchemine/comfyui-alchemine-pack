@@ -148,12 +148,30 @@ class BasePrompt:
 
             Input: (cat, dog)
             Output: (cat:1.1), (dog:1.1)
+
+            Input: (cat, dog, :3)
+            Output: (cat:1.1), (dog:1.1), (:3:1.1)
+
+            Input: (cat, :3, dog)
+            Output: (cat:1.1), (:3:1.1), (dog:1.1)
+
+            Input: (cat, :3, dog:1.2)
+            Output: (cat:1.2), (:3:1.2), (dog:1.2)
+
+            Input: (happy, drunk, :3:1.3)
+            Output: (happy:1.3), (drunk:1.3), (:3:1.3)
         """
 
         def expand_grouped_weights(match):
-            tags = [tag.strip() for tag in match.group(1).split(",")]
-            weight = match.group(2)
-            expanded = ", ".join(f"({tag}:{weight})" for tag in tags)
+            if match.group(1).strip().endswith(","):
+                # NOTE: (happy, :3) -> (happy:1.1), (:3:1.1)
+                raw_text = re.sub(r"(\s*\(\s*|\s*\)\s*)", "", match.group())
+                tags = [tag.strip() for tag in raw_text.split(",")]
+                expanded = ", ".join(f"({tag}:1.1)" for tag in tags)
+            else:
+                weight = match.group(2)
+                tags = [tag.strip() for tag in match.group(1).split(",")]
+                expanded = ", ".join(f"({tag}:{weight})" for tag in tags)
             return expanded
 
         def expand_grouped_no_weights(match):
@@ -162,23 +180,27 @@ class BasePrompt:
             expanded = ", ".join(f"({tag}:1.1)" for tag in tags)
             return expanded
 
-        # Pattern for groups with weight: (tag1, tag2:weight)
-        pattern_with_weight = r"\(([^:,()]+(?:,\s*[^:,()]+)*):([^)]+)\)"
+        # Pattern for groups with weight: (tag1, tag2:weight) or (tag1, tag2:weight1:weight2)
+        # Match groups ending with :number or :number:number (e.g., (tag1, tag2:1.2) or (tag1, :3:1.3))
+        pattern_with_weight = r"\(([^()]+):([\d.-]+(?::[\d.-]+)*)\)"
         text = re.sub(pattern_with_weight, expand_grouped_weights, text)
 
         # Pattern for groups without weight: (tag1, tag2)
-        pattern_no_weight = r"\(([^:,()]+(?:,\s*[^:,()]+)+)\)"
+        # Match groups with commas but no trailing :number
+        pattern_no_weight = r"\(([^()]+(?:,\s*[^()]+)+)\)(?!:[\d.-]+)"
         text = re.sub(pattern_no_weight, expand_grouped_no_weights, text)
 
         return text
 
     @classmethod
-    def adjust_fixed_tags(cls, text: str, fixed_tags: str) -> tuple[str, str]:
+    def preprocess_tags(cls, text: str, fixed_tags: str) -> tuple[str, str]:
         """Adjust fixed tags to be in the same order as tags in the text."""
-        # Preprocess texts
-        text = re.sub(r"(\(?BREAK:?[-\d.]*\)?)", "BREAK", text)
-        text = cls.unwrap_weights(text)
+        # 1. Adjust BREAK
+        text = re.sub(r"(\(?BREAK:?[\d.-]*\)?)", "BREAK", text)
         fixed_tags = re.sub(r"(\(?BREAK:?[-\d.]*\)?)", "BREAK", fixed_tags)
+
+        # 2. Unwrap weights
+        text = cls.unwrap_weights(text)
         fixed_tags = cls.unwrap_weights(fixed_tags)
 
         if fixed_tags:
@@ -235,7 +257,7 @@ class ProcessTags(BasePrompt):
         fixed_tags: str = "",
     ) -> tuple[str, list[str]]:
         """Process tags from a prompt."""
-        text, fixed_tags = cls.adjust_fixed_tags(text, fixed_tags)
+        text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
 
         filtered_tags_list = []
 
@@ -303,7 +325,7 @@ class FilterTags(BasePrompt):
     ) -> tuple[str, str]:
         """Filter blacklisted tags from a prompt."""
         # 1. Split tokens by BREAK
-        text, fixed_tags = cls.adjust_fixed_tags(text, fixed_tags)
+        text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -395,7 +417,7 @@ class FilterSubtags(BasePrompt):
     def execute(cls, text: str, fixed_tags: str = "") -> tuple[str, str]:
         """Filter subtags from a prompt."""
         # 1. Split tokens by BREAK
-        text, fixed_tags = cls.adjust_fixed_tags(text, fixed_tags)
+        text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -589,7 +611,10 @@ class TokenAnalyzer(BasePrompt):
 
 
 if __name__ == "__main__":
-    text = "(drunk, beer), full-face blush, sleepy, closed eyes, squeans, table, sitting, pussy juice, skirt lift, panties around one leg"
+    # text = "(drunk, beer), full-face blush"
+    # text = "(happy, drunk, :3), (drunk, beer), full-face blush"
+    # text = "(happy, drunk, :3:1.3), (beer, can), full-face blush"
+    text = "(happy, :3, drunk:1.3), (:>, can, :<), full-face blush"
     result = ProcessTags.execute(
         text,
         blacklist_tags="__color__ eyes, hello",
