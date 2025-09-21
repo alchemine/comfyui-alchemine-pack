@@ -585,10 +585,10 @@ if __name__ == "__main__":
     # text = "(happy, drunk, :3:1.3), (beer, can), full-face blush"
     # text = "(happy, :3, drunk:1.3), (:>, can, :<), full-face blush"
     # text = "(wariza), :3, palace, marble \\(stone\\), curtains, garden, fountain, plant, flower, lanterns"
-    text = "(e, f), h, i"
+    text = "blush, \n(covering body, do something),\n\n(:3)"
     result = ProcessTags.execute(
         text,
-        fixed_tags="(a, (c, d), :3), (e, f), g",
+        fixed_tags=text,
         replace_underscores=True,
         filter_tags=True,
         filter_subtags=True,

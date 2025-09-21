@@ -167,17 +167,16 @@ def standardize_prompt(text: str) -> str:
     # Handle :3
     text = re.sub(r":3\)", r":3:1.1)", text)
     attentions = parse_prompt_attention(text)
-    tags = []
+    result = ""
     for tag, weight in attentions:
-        tag = tag.strip(", ")
-        if not tag:
-            continue
-        if weight == 1:
-            tags.append(tag)
-        else:
-            for sub_tag in re.split(r",\s*", tag):
-                tags.append(f"({sub_tag}:{round(weight, 2)})")
-    return ", ".join(tags)
+        if weight != 1:
+            tag = re.sub(
+                r"[^,\n\s]+(?:\s+[^,\n\s]+)*",
+                rf"(\g<0>:{round(weight, 2)})",
+                tag,
+            )
+        result = f"{result}{tag}"
+    return result
 
 
 # wildcard trick is taken from pythongossss's
