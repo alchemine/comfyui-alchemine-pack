@@ -285,10 +285,18 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
 
     INPUT_TYPES = lambda: {
         "required": {
-            "post_id": ("INT", {"min": 1}),
+            "post_id": ("STRING",),
         }
     }
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_TYPES = (
+        "STRING",
+        "STRING",
+        "STRING",
+        "STRING",
+        "STRING",
+        "STRING",
+        "STRING",
+    )
     RETURN_NAMES = (
         "full_tags",
         "general_tags",
@@ -296,12 +304,13 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
         "copyright_tags",
         "artist_tags",
         "meta_tags",
+        "image_url",
     )
     FUNCTION = "execute"
     CATEGORY = "AlcheminePack/Danbooru"
 
     @classmethod
-    def execute(cls, post_id: int) -> tuple[str, str, str, str, str, str]:
+    def execute(cls, post_id: str) -> tuple[str, str, str, str, str, str]:
         url = f"https://danbooru.donmai.us/posts/{post_id}.json"
         if url not in cls.REQUEST_CACHE:
             response = requests.get(url)
@@ -318,6 +327,7 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
         copyright_tags = convert("tag_string_copyright")
         artist_tags = convert("tag_string_artist")
         meta_tags = convert("tag_string_meta")
+        image_url = data["file_url"]
 
         # NOTE: meta tags are excluded from full_tags
         full_tags = ", ".join(
@@ -331,10 +341,11 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
             copyright_tags,
             artist_tags,
             meta_tags,
+            image_url,
         )
 
     @classmethod
-    def IS_CHANGED(cls, post_id: int) -> int:
+    def IS_CHANGED(cls, post_id: str) -> str:
         return post_id
 
 
