@@ -14,6 +14,7 @@ from .nodes.danbooru import (
 from .nodes.input import WidthHeight
 from .nodes.inference import GeminiInference, OllamaInference, TextEditingInference
 from .nodes.flow_control import SignalSwitch
+from .nodes.lora import DownloadImage, SaveImageWithText
 
 
 # A dictionary that contains all nodes you want to export with their names
@@ -33,6 +34,8 @@ NODE_CLASS_MAPPINGS = {
     "OllamaInference": OllamaInference,
     "TextEditingInference": TextEditingInference,
     "SignalSwitch": SignalSwitch,
+    "DownloadImage": DownloadImage,
+    "SaveImageWithText": SaveImageWithText,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -51,4 +54,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "OllamaInference": "Ollama Inference",
     "TextEditingInference": "Text Editing Inference",
     "SignalSwitch": "Signal Switch",
+    "DownloadImage": "Download Image",
+    "SaveImageWithText": "Save Image With Text",
 }
