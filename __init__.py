@@ -5,6 +5,7 @@ from .nodes.prompt import (
     ReplaceUnderscores,
     FixBreakAfterTIPO,
     TokenAnalyzer,
+    RemoveWeights,
 )
 from .nodes.danbooru import (
     DanbooruRelatedTagsRetriever,
@@ -26,6 +27,7 @@ NODE_CLASS_MAPPINGS = {
     "ReplaceUnderscores": ReplaceUnderscores,
     "FixBreakAfterTIPO": FixBreakAfterTIPO,
     "TokenAnalyzer": TokenAnalyzer,
+    "RemoveWeights": RemoveWeights,
     "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
     "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
     "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
@@ -46,6 +48,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ReplaceUnderscores": "Replace Underscores",
     "FixBreakAfterTIPO": "Fix Break After TIPO",
     "TokenAnalyzer": "Token Analyzer",
+    "RemoveWeights": "Remove Weights",
     "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
     "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
     "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",

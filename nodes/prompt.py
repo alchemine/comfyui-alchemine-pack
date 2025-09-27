@@ -579,6 +579,36 @@ class TokenAnalyzer(BasePrompt):
         return (clip, text)
 
 
+class RemoveWeights(BasePrompt):
+    """Remove weights from a prompt."""
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("processed_text",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    def execute(cls, text: str) -> tuple[str]:
+        """Remove weights from a prompt."""
+        text_groups = []
+        groups = text.split("BREAK")
+        for group in groups:
+            tags = [cls.remove_weight(t) for t in group.split(",") if t.strip()]
+            text_groups.append(", ".join(tags))
+        processed_text = "\nBREAK\n\n".join(text_groups)
+
+        return (processed_text,)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
+
+
 if __name__ == "__main__":
     # text = "(drunk, beer), full-face blush"
     # text = "(happy, drunk, :3), (drunk, beer), full-face blush"
