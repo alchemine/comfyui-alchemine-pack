@@ -110,7 +110,11 @@ class SaveImageWithText(BaseLora):
             idx = 1 + len(list(dir_path.glob(f"{prefix}_*.*"))) // 2
             prefix_path = dir_path / f"{prefix}_{idx}"
         else:
-            idx = 1 + len(list(dir_path.glob("*.*"))) // 2
+            idxs = {
+                int(n.relative_to(dir_path).stem.split("_")[0])
+                for n in dir_path.glob("[0-9]*")
+            }
+            idx = 1 + max(idxs) if idxs else 1
             prefix_path = dir_path / f"{idx}"
         text_path = prefix_path.with_suffix(".txt")
         image_path = prefix_path.with_suffix(".png")
@@ -129,9 +133,10 @@ class SaveImageWithText(BaseLora):
 
         return (relpath(image_path, output_dir), relpath(text_path, output_dir))
 
-    @classmethod
-    def IS_CHANGED(cls, text: str, dir_path: str, prefix: str = "") -> str:
-        return text, dir_path, prefix
+    # # always overwrite
+    # @classmethod
+    # def IS_CHANGED(cls, image, text: str, dir_path: str, prefix: str = "") -> str:
+    #     return image, text, dir_path, prefix
 
 
 if __name__ == "__main__":
