@@ -3,9 +3,9 @@ from math import ceil
 from random import Random
 from collections import defaultdict
 
-import aiohttp
 import asyncio
-import requests
+
+from playwright.async_api import async_playwright
 
 from .utils import get_logger
 
@@ -215,28 +215,27 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
         """Request Danbooru API."""
         base_url = "https://danbooru.donmai.us/related_tag.json?commit=Search&search[category]={category}&search[order]={order}&search[query]={query}"
 
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            urls = []
+        responses = []
+        async with async_playwright() as p:
+            api_context = await p.request.new_context()
             for query in queries:
                 url = base_url.format(category=category, order=order, query=query)
-                urls.append(url)
                 if url in cls.REQUEST_CACHE:
-                    tasks.append(None)
-                else:
-                    tasks.append(session.get(url))
-
-            responses = []
-            for url, task in zip(urls, tasks):
-                if task is None:
                     responses.append(cls.REQUEST_CACHE[url])
-                else:
-                    resp = await task
-                    resp.raise_for_status()
-                    json_data = await resp.json()
-                    cls.REQUEST_CACHE[url] = json_data
-                    responses.append(json_data)
+                    continue
 
+                resp = await api_context.get(url)
+                if not resp.ok:
+                    text = await resp.text()
+                    logger.error(
+                        f"Request to {url} failed with status {resp.status}: {text}"
+                    )
+                    raise Exception(
+                        f"Request to {url} failed with status {resp.status}"
+                    )
+                json_data = await resp.json()
+                cls.REQUEST_CACHE[url] = json_data
+                responses.append(json_data)
         return responses
 
     @classmethod
@@ -310,12 +309,21 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
     CATEGORY = "AlcheminePack/Danbooru"
 
     @classmethod
-    def execute(cls, post_id: str) -> tuple[str, str, str, str, str, str]:
+    async def aexecute(cls, post_id: str) -> tuple[str, str, str, str, str, str, str]:
         url = f"https://danbooru.donmai.us/posts/{post_id}.json"
         if url not in cls.REQUEST_CACHE:
-            response = requests.get(url)
-            response.raise_for_status()
-            cls.REQUEST_CACHE[url] = response.json()
+            async with async_playwright() as p:
+                api_context = await p.request.new_context()
+                resp = await api_context.get(url)
+                if not resp.ok:
+                    text = await resp.text()
+                    logger.error(
+                        f"Request to {url} failed with status {resp.status}: {text}"
+                    )
+                    raise Exception(
+                        f"Request to {url} failed with status {resp.status}"
+                    )
+                cls.REQUEST_CACHE[url] = await resp.json()
         data = cls.REQUEST_CACHE[url]
 
         # tag_string
@@ -327,7 +335,7 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
         copyright_tags = convert("tag_string_copyright")
         artist_tags = convert("tag_string_artist")
         meta_tags = convert("tag_string_meta")
-        image_url = data["file_url"]
+        image_url = data.get("file_url", "not_found")
 
         # NOTE: meta tags are excluded from full_tags
         full_tags = ", ".join(
@@ -343,6 +351,10 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
             meta_tags,
             image_url,
         )
+
+    @classmethod
+    def execute(cls, post_id: str) -> tuple[str, str, str, str, str, str, str]:
+        return asyncio.run(cls.aexecute(post_id=post_id))
 
     @classmethod
     def IS_CHANGED(cls, post_id: str) -> str:
@@ -460,8 +472,9 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
         if scale:
             params["scale"] = scale
 
-        async with aiohttp.ClientSession() as session:
-            datas = []
+        datas = []
+        async with async_playwright() as p:
+            api_context = await p.request.new_context()
             if random:
                 n_pages = n
             else:
@@ -480,13 +493,20 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
                 # Cache requests (avoid Too Many Requests errors)
                 if url in cls.REQUEST_CACHE:
                     datas.extend(cls.REQUEST_CACHE[url])
-                else:
-                    resp = await session.get(url)
-                    resp.raise_for_status()
-                    json_data = await resp.json()
-                    cls.REQUEST_CACHE[url] = json_data
-                    datas.extend(json_data)
+                    continue
 
+                resp = await api_context.get(url)
+                if not resp.ok:
+                    text = await resp.text()
+                    logger.error(
+                        f"Request to {url} failed with status {resp.status}: {text}"
+                    )
+                    raise Exception(
+                        f"Request to {url} failed with status {resp.status}"
+                    )
+                json_data = await resp.json()
+                cls.REQUEST_CACHE[url] = json_data
+                datas.extend(json_data)
         return datas
 
     @classmethod
@@ -508,8 +528,8 @@ if __name__ == "__main__":
     #     n_min_tags=10,
     #     n_max_tags=100,
     # )
-    # result = DanbooruPostTagsRetriever.execute(post_id="9557805")
-    result = DanbooruPopularPostsTagsRetriever.execute(
-        date="", scale="day", n=1, random=False, seed=0
-    )
-    print(result[0])
+    result = DanbooruPostTagsRetriever.execute(post_id="9557805")
+    # result = DanbooruPopularPostsTagsRetriever.execute(
+    #     date="", scale="day", n=1, random=False, seed=0
+    # )
+    print(result)
