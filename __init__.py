@@ -6,16 +6,19 @@ from .nodes.prompt import (
     FixBreakAfterTIPO,
     TokenAnalyzer,
     RemoveWeights,
+    AutoBreak,
 )
 from .nodes.danbooru import (
     DanbooruRelatedTagsRetriever,
     DanbooruPostTagsRetriever,
     DanbooruPopularPostsTagsRetriever,
+    DanbooruPostsDownloader,
 )
 from .nodes.input import WidthHeight
 from .nodes.inference import GeminiInference, OllamaInference, TextEditingInference
 from .nodes.flow_control import SignalSwitch
 from .nodes.lora import DownloadImage, SaveImageWithText
+from .nodes.io import AsyncSaveImage, PreviewLatestImage
 
 
 # A dictionary that contains all nodes you want to export with their names
@@ -28,9 +31,11 @@ NODE_CLASS_MAPPINGS = {
     "FixBreakAfterTIPO": FixBreakAfterTIPO,
     "TokenAnalyzer": TokenAnalyzer,
     "RemoveWeights": RemoveWeights,
+    "AutoBreak": AutoBreak,
     "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
     "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
     "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
+    "DanbooruPostsDownloader": DanbooruPostsDownloader,
     "WidthHeight": WidthHeight,
     "GeminiInference": GeminiInference,
     "OllamaInference": OllamaInference,
@@ -38,6 +43,8 @@ NODE_CLASS_MAPPINGS = {
     "SignalSwitch": SignalSwitch,
     "DownloadImage": DownloadImage,
     "SaveImageWithText": SaveImageWithText,
+    "AsyncSaveImage": AsyncSaveImage,
+    "PreviewLatestImage": PreviewLatestImage,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -49,9 +56,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FixBreakAfterTIPO": "Fix Break After TIPO",
     "TokenAnalyzer": "Token Analyzer",
     "RemoveWeights": "Remove Weights",
+    "AutoBreak": "Auto Break",
     "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
     "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
     "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",
+    "DanbooruPostsDownloader": "Danbooru Posts Downloader",
     "WidthHeight": "Width Height",
     "GeminiInference": "Gemini Inference",
     "OllamaInference": "Ollama Inference",
@@ -59,4 +68,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SignalSwitch": "Signal Switch",
     "DownloadImage": "Download Image",
     "SaveImageWithText": "Save Image With Text",
+    "AsyncSaveImage": "Async Save Image",
+    "PreviewLatestImage": "Preview Latest Image",
 }
