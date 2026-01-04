@@ -1,10 +1,14 @@
+import os
 import re
 from math import ceil
 from random import Random
 from collections import defaultdict
+from os.path import exists, relpath
+from pathlib import Path
 
 import asyncio
 
+import folder_paths
 from playwright.async_api import async_playwright
 
 from .utils import get_logger
@@ -61,7 +65,8 @@ class BaseDanbooru:
             # Example: [cat], [[cat]]
             tag = match.group(2)
         else:
-            logger.warning(f"Unexpected tag format: {tag}")
+            # logger.warning(f"Unexpected tag format: {tag}")
+            pass
         return tag
 
     @staticmethod
@@ -519,6 +524,137 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
             return (date, scale, n)
 
 
+class DanbooruPostsDownloader(BaseDanbooru):
+    """Download posts from Danbooru."""
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "tags": ("STRING", {"default": ""}),
+            "n": ("INT", {"default": 1, "min": 1}),
+            "dir_path": ("STRING", {"default": ""}),
+            "prefix": ("STRING", {"default": ""}),
+        }
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("file_paths",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Danbooru"
+
+    @classmethod
+    def execute(
+        cls,
+        tags: str = "",
+        n: int = 1,
+        dir_path: str = "",
+        prefix: str = "",
+    ) -> tuple[list[str]]:
+        return asyncio.run(
+            cls.aexecute(tags=tags, n=n, dir_path=dir_path, prefix=prefix)
+        )
+
+    @classmethod
+    async def aexecute(
+        cls,
+        tags: str = "",
+        n: int = 1,
+        dir_path: str = "",
+        prefix: str = "",
+    ) -> tuple[list[str]]:
+        # Set default values
+        output_dir = Path(folder_paths.get_output_directory())
+        dir_path_obj = output_dir / dir_path
+        if not exists(dir_path_obj):
+            os.makedirs(dir_path_obj, exist_ok=True)
+
+        datas = await cls.arequest(tags, n)
+
+        if prefix:
+            start_idx = 1 + len(list(dir_path_obj.glob(f"{prefix}_*.*")))
+        else:
+            idxs = set()
+            for f in dir_path_obj.glob("[0-9]*.*"):
+                try:
+                    idx_val = int(f.stem.split("_")[0])
+                    idxs.add(idx_val)
+                except (ValueError, IndexError):
+                    continue
+            start_idx = (max(idxs) + 1) if idxs else 1
+        idx = start_idx
+
+        async with async_playwright() as p:
+            api_context = await p.request.new_context()
+
+            file_paths = []
+            for data in datas:
+                if not data.get("file_url"):
+                    continue
+
+                file_url = data["file_url"]
+                extension = os.path.splitext(file_url.split("?")[0])[-1]
+                if prefix:
+                    file_name = f"{prefix}_{idx}{extension}"
+                else:
+                    file_name = f"{idx}{extension}"
+                file_path = dir_path_obj / file_name
+
+                if not file_path.exists():
+                    try:
+                        resp = await api_context.get(file_url)
+                        if not resp.ok:
+                            raise Exception(f"HTTP {resp.status}")
+                        with open(file_path, "wb") as f:
+                            f.write(await resp.body())
+                        logger.info(f"Downloaded {file_url} to {file_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to download {file_url}: {e}")
+                        continue
+
+                file_paths.append(relpath(file_path, output_dir))
+                idx += 1
+
+        return (file_paths,)
+
+    @classmethod
+    async def arequest(cls, tags: str, n: int) -> list[dict]:
+        """Request Danbooru API.
+
+        NOTE: Select `n` posts from `n` pages
+        """
+        params = {}
+        params["tags"] = tags
+
+        datas = []
+        async with async_playwright() as p:
+            api_context = await p.request.new_context()
+            for page in range(1, 1 + n):
+                params["page"] = page
+                params_str = "&".join([f"{k}={v}" for k, v in params.items()])
+                url = f"https://danbooru.donmai.us/posts.json?{params_str}"
+
+                # Cache requests (avoid Too Many Requests errors)
+                if url in cls.REQUEST_CACHE:
+                    datas.extend(cls.REQUEST_CACHE[url])
+                    continue
+
+                resp = await api_context.get(url)
+                if not resp.ok:
+                    text = await resp.text()
+                    logger.error(
+                        f"Request to {url} failed with status {resp.status}: {text}"
+                    )
+                    raise Exception(
+                        f"Request to {url} failed with status {resp.status}"
+                    )
+                json_data = await resp.json()
+                cls.REQUEST_CACHE[url] = json_data
+                datas.extend(json_data)
+        return datas
+
+    @classmethod
+    def IS_CHANGED(cls, tags: str, n: int, dir_path: str, prefix: str) -> tuple:
+        return (tags, n, dir_path, prefix)
+
+
 if __name__ == "__main__":
     # result = DanbooruRelatedTagsRetriever.execute(
     #     text=r"ray \(arknights\), amiya \(arknights\)",
@@ -528,8 +664,12 @@ if __name__ == "__main__":
     #     n_min_tags=10,
     #     n_max_tags=100,
     # )
-    result = DanbooruPostTagsRetriever.execute(post_id="9557805")
+    # result = DanbooruPostTagsRetriever.execute(post_id="9557805")
     # result = DanbooruPopularPostsTagsRetriever.execute(
     #     date="", scale="day", n=1, random=False, seed=0
     # )
+
+    result = DanbooruPostsDownloader.execute(
+        tags="1girl solo", n=1, dir_path="output/custom/cecilia"
+    )
     print(result)
