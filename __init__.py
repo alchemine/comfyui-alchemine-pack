@@ -7,6 +7,7 @@ from .nodes.prompt import (
     TokenAnalyzer,
     RemoveWeights,
     AutoBreak,
+    SubstituteTags,
 )
 from .nodes.danbooru import (
     DanbooruRelatedTagsRetriever,
@@ -32,6 +33,7 @@ NODE_CLASS_MAPPINGS = {
     "TokenAnalyzer": TokenAnalyzer,
     "RemoveWeights": RemoveWeights,
     "AutoBreak": AutoBreak,
+    "SubstituteTags": SubstituteTags,
     "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
     "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
     "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
@@ -57,6 +59,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "TokenAnalyzer": "Token Analyzer",
     "RemoveWeights": "Remove Weights",
     "AutoBreak": "Auto Break",
+    "SubstituteTags": "Substitute Tags",
     "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
     "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
     "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",

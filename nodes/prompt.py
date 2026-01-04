@@ -754,6 +754,83 @@ class AutoBreak(BasePrompt):
         return (clip, text)
 
 
+class SubstituteTags(BasePrompt):
+    """Replace text using regex pattern with conditional execution.
+
+    Args:
+        text: Input text to process
+        pattern: Regex pattern to match
+        repl: Replacement string
+        run_if: Optional regex pattern. Replacement is performed only if this pattern EXISTS.
+        skip_if: Optional regex pattern. Replacement is SKIPPED if this pattern exists.
+
+    Examples:
+        - "girl이 없으면 1boy → 1girl, 1boy":
+          pattern="1boy", repl="1girl, 1boy", skip_if="girl"
+        - "1boy가 있으면 solo 제거":
+          pattern="solo,?\\s*", repl="", run_if="1boy"
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+            "pattern": (
+                "STRING",
+                {"default": "", "multiline": False, "placeholder": "regex pattern"},
+            ),
+            "repl": (
+                "STRING",
+                {"default": "", "multiline": False, "placeholder": "replacement"},
+            ),
+        },
+        "optional": {
+            "run_if": (
+                "STRING",
+                {
+                    "default": "",
+                    "multiline": False,
+                    "placeholder": "run only if this pattern exists",
+                },
+            ),
+            "skip_if": (
+                "STRING",
+                {
+                    "default": "",
+                    "multiline": False,
+                    "placeholder": "skip if this pattern exists",
+                },
+            ),
+        },
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("processed_text",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    def execute(
+        cls, text: str, pattern: str, repl: str, run_if: str = "", skip_if: str = ""
+    ) -> tuple[str]:
+        """Replace text using regex pattern with conditional execution."""
+        # If run_if is provided, only run if the pattern is found
+        if run_if and not re.search(run_if, text):
+            return (text,)
+
+        # If skip_if is provided, skip replacement if the pattern is found
+        if skip_if and re.search(skip_if, text):
+            return (text,)
+
+        # Perform the replacement
+        processed_text = re.sub(pattern, repl, text)
+        return (processed_text,)
+
+    @classmethod
+    def IS_CHANGED(
+        cls, text: str, pattern: str, repl: str, run_if: str = "", skip_if: str = ""
+    ) -> tuple:
+        return (text, pattern, repl, run_if, skip_if)
+
+
 if __name__ == "__main__":
     text = "(drunk, beer), full-face blush"
     text = "(happy, drunk, :3), (drunk, beer), full-face blush"
