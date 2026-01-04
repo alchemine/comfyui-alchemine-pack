@@ -1,3 +1,4 @@
+import numbers
 import re
 import textwrap
 from functools import wraps
@@ -106,7 +107,8 @@ class BasePrompt:
             # Example: [cat], [[cat]]
             tag = match.group(2)
         else:
-            logger.warning(f"Unexpected tag format: {tag}")
+            # logger.warning(f"Unexpected tag format: {tag}")
+            pass
         return tag
 
     @staticmethod
@@ -180,7 +182,8 @@ class BasePrompt:
 class ProcessTags(BasePrompt):
     """Full process of tags from a prompt.
 
-    Order of operations: ReplaceUnderscores -> FilterTags -> FilterSubtags"""
+    Order of operations: ReplaceUnderscores -> FilterTags -> FilterSubtags -> AutoBreak
+    """
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -188,8 +191,10 @@ class ProcessTags(BasePrompt):
             "replace_underscores": ("BOOLEAN", {"default": True}),
             "filter_tags": ("BOOLEAN", {"default": True}),
             "filter_subtags": ("BOOLEAN", {"default": True}),
+            "auto_break": ("BOOLEAN", {"default": False}),
         },
         "optional": {
+            "clip": ("CLIP",),
             "blacklist_tags": ("STRING", {"default": ""}),
             "fixed_tags": ("STRING", {"default": ""}),
         },
@@ -207,6 +212,8 @@ class ProcessTags(BasePrompt):
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
+        auto_break: bool = False,
+        clip=None,
         blacklist_tags: str = "",
         fixed_tags: str = "",
     ) -> tuple[str, list[str]]:
@@ -235,6 +242,9 @@ class ProcessTags(BasePrompt):
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
 
+        if auto_break and clip is not None:
+            text = AutoBreak.execute(clip=clip, text=text)[0]
+
         return (text, filtered_tags_list)
 
     @classmethod
@@ -244,6 +254,8 @@ class ProcessTags(BasePrompt):
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
+        auto_break: bool = False,
+        clip=None,
         blacklist_tags: str = "",
         fixed_tags: str = "",
     ) -> bool:
@@ -252,6 +264,8 @@ class ProcessTags(BasePrompt):
             replace_underscores,
             filter_tags,
             filter_subtags,
+            auto_break,
+            clip,
             blacklist_tags,
             fixed_tags,
         )
@@ -343,6 +357,8 @@ class FilterTags(BasePrompt):
 
         # 4. Join groups by BREAK
         processed_text = "\nBREAK\n\n".join(new_groups)
+        # Remove trailing comma before BREAK
+        processed_text = re.sub(r",\s*\n?BREAK", "\nBREAK", processed_text)
         filtered_tags = ", ".join(filtered_tag_list)
         return (processed_text, filtered_tags)
 
@@ -430,6 +446,8 @@ class FilterSubtags(BasePrompt):
 
         # 3. Join groups by BREAK
         processed_text = "\nBREAK\n\n".join(new_groups)
+        # Remove trailing comma before BREAK
+        processed_text = re.sub(r",\s*\n?BREAK", "\nBREAK", processed_text)
         filtered_tags = ", ".join(filtered_tag_list)
         return (processed_text, filtered_tags)
 
@@ -520,7 +538,10 @@ class TokenAnalyzer(BasePrompt):
         if isinstance(text, list):
             # NOTE: unexpected list type handling
             text = ", ".join(text)
-        tokens = clip.tokenize(text)
+
+        # Split text by BREAK first, then tokenize each part separately
+        # This avoids CLIP's internal 77-token chunking which limits each chunk to 75 tokens
+        prompts = [p.strip() for p in text.split("BREAK")]
 
         results = {}
         tokenizer_ids = ["g", "l"]
@@ -530,22 +551,64 @@ class TokenAnalyzer(BasePrompt):
             # Filter out special tokens (start, end, pad)
             # NOTE: tokens[tokenizer_id].shape: (batch_size, seq_len, embedding_dim)
             # NOTE: seq_len: N*77(75 + start_token + end_token)
-            tid_weight_pairs = [
-                (tid, weight)
-                for tid, weight in tokens[tokenizer_id][0]  # [0]: first sample
-                if tid
-                not in [tokenizer.start_token, tokenizer.end_token, tokenizer.pad_token]
+            # NOTE: tid can be a Tensor for embeddings, so we check if it's an integer first
+            special_tokens = [
+                tokenizer.start_token,
+                tokenizer.end_token,
+                tokenizer.pad_token,
             ]
 
-            token_strs = []
-            for (tid, weight), token_str in tokenizer.untokenize(tid_weight_pairs):
-                token_strs.append(
-                    f"({token_str}:{weight})" if weight != 1 else token_str
-                )
-            split_tokens = cls._split_tokens_by_break(token_strs)
+            all_token_strs = []  # List of token lists for each prompt segment
+
+            for prompt in prompts:
+                if not prompt:
+                    all_token_strs.append([])
+                    continue
+
+                tokens = clip.tokenize(prompt)
+
+                # Separate embeddings (Tensors) from regular token IDs
+                # NOTE: tid can be a Tensor for embeddings, so we check if it's an integer first
+                tid_weight_pairs = []
+                embedding_indices = []
+                for idx, (tid, weight) in enumerate(tokens[tokenizer_id][0]):
+                    if not isinstance(tid, numbers.Integral):
+                        # Embedding tensor - mark position
+                        embedding_indices.append(len(tid_weight_pairs))
+                        tid_weight_pairs.append((tid, weight))
+                    elif tid not in special_tokens:
+                        tid_weight_pairs.append((tid, weight))
+
+                # Build token strings, handling embeddings separately
+                token_strs = []
+                embedding_idx_set = set(embedding_indices)
+                untokenize_pairs = [
+                    (tid, weight)
+                    for i, (tid, weight) in enumerate(tid_weight_pairs)
+                    if i not in embedding_idx_set
+                ]
+
+                untokenize_result = list(tokenizer.untokenize(untokenize_pairs))
+                untokenize_iter = iter(untokenize_result)
+
+                for i, (tid, weight) in enumerate(tid_weight_pairs):
+                    if i in embedding_idx_set:
+                        # Embedding - show placeholder
+                        token_str = "[emb]"
+                        token_strs.append(
+                            f"({token_str}:{weight})" if weight != 1 else token_str
+                        )
+                    else:
+                        (_, _), token_str = next(untokenize_iter)
+                        token_strs.append(
+                            f"({token_str}:{weight})" if weight != 1 else token_str
+                        )
+
+                all_token_strs.append(token_strs)
+
             results[tokenizer_id] = {
-                "tokens": "\n\n".join([" | ".join(tokens) for tokens in split_tokens]),
-                "token_count": ", ".join([str(len(tokens)) for tokens in split_tokens]),
+                "tokens": "\n\n".join([" | ".join(t) for t in all_token_strs]),
+                "token_count": ", ".join([str(len(t)) for t in all_token_strs]),
             }
 
         return (
@@ -601,6 +664,8 @@ class RemoveWeights(BasePrompt):
             tags = [cls.remove_weight(t) for t in group.split(",") if t.strip()]
             text_groups.append(", ".join(tags))
         processed_text = "\nBREAK\n\n".join(text_groups)
+        # Remove trailing comma before BREAK
+        processed_text = re.sub(r",\s*\n?BREAK", "\nBREAK", processed_text)
 
         return (processed_text,)
 
@@ -609,12 +674,92 @@ class RemoveWeights(BasePrompt):
         return (text,)
 
 
+class AutoBreak(BasePrompt):
+    """Automatically insert BREAK to keep each segment within 75 tokens."""
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "clip": ("CLIP", {"forceInput": True}),
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("processed_text",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    def execute(cls, clip, text) -> tuple[str]:
+        if isinstance(text, list):
+            text = ", ".join(text)
+
+        def count(t):
+            if not t.strip():
+                return 0
+            toks = clip.tokenize(t)
+
+            def count_tokens(k):
+                tokenizer = getattr(clip.tokenizer, f"clip_{k}")
+                special_tokens = [
+                    tokenizer.start_token,
+                    tokenizer.end_token,
+                    tokenizer.pad_token,
+                ]
+                return sum(
+                    1
+                    for tid, _ in toks[k][0]
+                    if not isinstance(tid, numbers.Integral)
+                    or tid not in special_tokens
+                )
+
+            # NOTE: use g tokenizer only
+            # return max(count_tokens(k) for k in ["g", "l"])
+            n_tokens = count_tokens("g")
+            return n_tokens
+
+        def split(seg):
+            # 각 단어와 그 끝 위치 추적 (원본 보존을 위해)
+            words = []
+            word_ends = []
+            for match in re.finditer(r"[^,]+", seg):
+                word = match.group().strip()
+                if word:
+                    words.append(word)
+                    word_ends.append(match.end())
+
+            n_words = len(words)
+            if n_words >= 2:
+                # NOTE: token count 75 can be overflow or fit. But, 'fit' case is ignored.
+                if count(seg[: word_ends[n_words - 1]]) >= 75:
+                    for i in range(n_words - 1, 0, -1):
+                        prefix = seg[: word_ends[i - 1]]  # i번째 단어까지 원본 그대로
+                        if count(prefix) < 75:
+                            suffix = re.sub(r"^[,\s]*", "", seg[word_ends[i - 1] :])
+                            result = f"{prefix}\n\nBREAK\n{split(suffix)}"
+                            break
+                else:
+                    result = seg
+            else:
+                result = seg
+            return result
+
+        # Remove only commas around BREAK (preserve whitespace/newlines)
+        result = "BREAK".join(split(s) for s in text.split("BREAK") if s)
+        result = re.sub(r",*(\s*)BREAK", r"\1BREAK", result)
+        result = re.sub(r"BREAK(\s*),*", r"BREAK\1", result)
+        return (result,)
+
+    @classmethod
+    def IS_CHANGED(cls, clip, text) -> tuple:
+        return (clip, text)
+
+
 if __name__ == "__main__":
-    # text = "(drunk, beer), full-face blush"
-    # text = "(happy, drunk, :3), (drunk, beer), full-face blush"
-    # text = "(happy, drunk, :3:1.3), (beer, can), full-face blush"
-    # text = "(happy, :3, drunk:1.3), (:>, can, :<), full-face blush"
-    # text = "(wariza), :3, palace, marble \\(stone\\), curtains, garden, fountain, plant, flower, lanterns"
+    text = "(drunk, beer), full-face blush"
+    text = "(happy, drunk, :3), (drunk, beer), full-face blush"
+    text = "(happy, drunk, :3:1.3), (beer, can), full-face blush"
+    text = "(happy, :3, drunk:1.3), (:>, can, :<), full-face blush"
+    text = "(wariza), :3, palace, marble \\(stone\\), curtains, garden, fountain, plant, flower, lanterns"
     text = "blush, \n(covering body, do something),\n\n(:3)"
     result = ProcessTags.execute(
         text,
