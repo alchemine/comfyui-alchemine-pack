@@ -1,4 +1,4 @@
-"""Flow Control nodes."""
+"""Nodes in AlcheminePack/FlowControl"""
 
 from typing import Any
 from .utils import any_typ
