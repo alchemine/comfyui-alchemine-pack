@@ -1,3 +1,5 @@
+"""Flow Control nodes."""
+
 from typing import Any
 from .utils import any_typ
 
@@ -15,7 +17,13 @@ class BaseFlowControl:
 # Nodes
 #################################################################
 class SignalSwitch(BaseFlowControl):
-    """Pass value when the signal is triggered."""
+    """Pass `value` after the `signal` is passed.
+    This is useful when you want to control the execution order of the nodes.
+
+    Args:
+        signal (Any): Signal to pass the `value`.
+        value (Any): Value to pass.
+    """
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -31,7 +39,3 @@ class SignalSwitch(BaseFlowControl):
     @classmethod
     def execute(cls, signal: Any, value: Any) -> tuple[Any]:
         return (value,)
-
-    @classmethod
-    def IS_CHANGED(cls, signal: Any, value: Any) -> tuple:
-        return (signal, value)
