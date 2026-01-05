@@ -6,17 +6,20 @@ import logging
 from pathlib import Path
 from functools import wraps
 
-
 #################################################################
-# Logger setup
+# Constants
 #################################################################
 ROOT_DIR = Path(__file__).parent.parent
 CUSTOM_NODES_DIR = ROOT_DIR.parent
-CONFIG = json.load(open(ROOT_DIR / "config.json"))
+with open(ROOT_DIR / "config.json", "r") as f:
+    CONFIG = json.load(f)
 RESOURCES_DIR = ROOT_DIR / "resources"
 WILDCARD_PATH = RESOURCES_DIR / "wildcards.yaml"
 
 
+#################################################################
+# Logger setup
+#################################################################
 def get_logger(name: str = __file__, level: int = logging.WARNING) -> logging.Logger:
     """Get a logger with a custom formatter that shows the relative path of the file."""
 
@@ -34,6 +37,7 @@ def get_logger(name: str = __file__, level: int = logging.WARNING) -> logging.Lo
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(level)
+    logger.propagate = False  # Prevent duplicate logs from root logger
     return logger
 
 
@@ -73,7 +77,8 @@ re_attention = re.compile(attn_syntax, re.X)
 re_break = re.compile(r"\s*\bBREAK\b\s*", re.S)
 
 
-# NOTE: https://github.com/KohakuBlueleaf/z-tipo-extension/blob/6c6bd9f40bca42f9bbab8b1e7a2ba51cb0d5424b/nodes/tipo.py#L63
+# NOTE: prompt attention parsing is taken from KohakuBlueleaf's
+# https://github.com/KohakuBlueleaf/z-tipo-extension/blob/6c6bd9f40bca42f9bbab8b1e7a2ba51cb0d5424b/nodes/tipo.py#L63
 def parse_prompt_attention(text):
     r"""
     Parses a string with attention tokens and returns a list of pairs: text and its associated weight.
@@ -179,7 +184,7 @@ def standardize_prompt(text: str) -> str:
     return result
 
 
-# wildcard trick is taken from pythongossss's
+# NOTE: wildcard trick is taken from pythongossss's
 class AnyType(str):
     def __ne__(self, __value: object) -> bool:
         return False
