@@ -1,12 +1,17 @@
 [project]
 name = "comfyui-alchemine-pack"
 description = "Custom nodes pack for ComfyUI"
-version = "0.1.7"
-license = "LICENSE"
+version = "1.0.0"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=1.56.0",
+]
 
 [project.urls]
 Repository = "https://github.com/alchemine/comfyui-alchemine-pack"
-#  Used by Comfy Registry https://comfyregistry.org
+Documentation = "https://github.com/alchemine/comfyui-alchemine-pack/wiki"
+"Bug Tracker" = "https://github.com/alchemine/comfyui-alchemine-pack/issues"
 
 [tool.comfy]
 PublisherId = "alchemine"

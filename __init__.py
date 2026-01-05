@@ -1,6 +1,7 @@
 """Custom nodes mappings."""
 
 from .nodes.flow_control import SignalSwitch
+from .nodes.inference import GeminiInference, OllamaInference, TextEditingInference
 from .nodes.prompt import (
     ProcessTags,
     FilterSubtags,
@@ -19,7 +20,6 @@ from .nodes.danbooru import (
     DanbooruPostsDownloader,
 )
 from .nodes.input import WidthHeight
-from .nodes.inference import GeminiInference, OllamaInference, TextEditingInference
 from .nodes.lora import DownloadImage, SaveImageWithText
 from .nodes.io import AsyncSaveImage, PreviewLatestImage
 
@@ -27,6 +27,10 @@ from .nodes.io import AsyncSaveImage, PreviewLatestImage
 NODE_CLASS_MAPPINGS = {
     # AlcheminePack/FlowControl #########################################################
     "SignalSwitch": SignalSwitch,
+    # AlcheminePack/Inference #########################################################
+    "GeminiInference": GeminiInference,
+    "OllamaInference": OllamaInference,
+    "TextEditingInference": TextEditingInference,
     "ProcessTags": ProcessTags,
     "FilterTags": FilterTags,
     "FilterSubtags": FilterSubtags,
@@ -41,9 +45,6 @@ NODE_CLASS_MAPPINGS = {
     "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
     "DanbooruPostsDownloader": DanbooruPostsDownloader,
     "WidthHeight": WidthHeight,
-    "GeminiInference": GeminiInference,
-    "OllamaInference": OllamaInference,
-    "TextEditingInference": TextEditingInference,
     "DownloadImage": DownloadImage,
     "SaveImageWithText": SaveImageWithText,
     "AsyncSaveImage": AsyncSaveImage,
@@ -54,6 +55,10 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     # AlcheminePack/FlowControl #########################################################
     "SignalSwitch": "Signal Switch",
+    # AlcheminePack/Inference #########################################################
+    "GeminiInference": "Gemini Inference",
+    "OllamaInference": "Ollama Inference",
+    "TextEditingInference": "Text Editing Inference",
     "ProcessTags": "Process Tags",
     "FilterTags": "Filter Tags",
     "FilterSubtags": "Filter Subtags",
@@ -68,9 +73,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",
     "DanbooruPostsDownloader": "Danbooru Posts Downloader",
     "WidthHeight": "Width Height",
-    "GeminiInference": "Gemini Inference",
-    "OllamaInference": "Ollama Inference",
-    "TextEditingInference": "Text Editing Inference",
     "DownloadImage": "Download Image",
     "SaveImageWithText": "Save Image With Text",
     "AsyncSaveImage": "Async Save Image",

@@ -1,3 +1,5 @@
+"""Nodes in AlcheminePack/Inference."""
+
 import re
 from io import BytesIO
 from base64 import b64encode
@@ -10,7 +12,11 @@ from PIL import Image
 
 from .utils import get_logger, CONFIG
 
+
 logger = get_logger()
+
+
+CACHE_MAX_SIZE = 10
 
 
 #################################################################
@@ -19,10 +25,31 @@ logger = get_logger()
 class BaseInference:
     """Base class for Inference nodes."""
 
+    # NOTE: Cache for API requests
     REQUEST_CACHE = {}
+
+    @classmethod
+    def _set_cache(cls, key, value) -> None:
+        """Set cache with LRU eviction."""
+        cls.REQUEST_CACHE[key] = value
+        if len(cls.REQUEST_CACHE) > CACHE_MAX_SIZE:
+            first_item_key = next(iter(cls.REQUEST_CACHE))
+            del cls.REQUEST_CACHE[first_item_key]
 
     @staticmethod
     def encode_image(image: torch.Tensor, return_bytes: bool = False) -> bytes | str:
+        """Encode image to bytes or base64.
+
+        Args:
+            image (torch.Tensor): Image tensor.
+                Must be a 4D tensor in the shape of [B, H, W, C].
+            return_bytes (bool): Whether to return bytes or base64.
+                If True, return bytes.
+                If False, return base64.
+
+        Returns:
+            bytes | str: Encoded image.
+        """
         assert image.ndim == 4, "Image must be a 4D tensor"  # [B, H, W, C]
         image_tensor = image[0].detach().cpu().numpy()  # float in [0, 1]
         image_tensor = (image_tensor * 255).astype(np.uint8)
@@ -42,7 +69,24 @@ class BaseInference:
 # Nodes
 #################################################################
 class GeminiInference(BaseInference):
-    """Gemini inference."""
+    """Inference with Gemini API.
+
+    Args:
+        system_instruction (str): System instruction.
+        prompt (str): Prompt.
+        gemini_api_key (str): Gemini API key. Must be set in the `custom_nodes/comfyui-alchemine-pack/config.json` file.
+        model (str): Model name.
+           - latest: Latest Flash model (default)
+           - latest-{suffix}: Latest {suffix} model
+              - e.g. latest-flash-preview, latest-flash-lite, latest-pro-preview
+           - See https://github.com/googleapis/python-genai/blob/main/codegen_instructions.md#models for available models.
+        max_output_tokens (int): Maximum output tokens.
+        seed (int): Seed.
+        think (bool): Whether to use thinking mode.
+        candidate_count (int): Number of candidates.
+        image (list[torch.Tensor] | None): Image tensor.
+            Must be a 4D tensor in the shape of [B, H, W, C].
+    """
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -69,7 +113,7 @@ class GeminiInference(BaseInference):
             "max_output_tokens": ("INT", {"default": 100, "min": 1}),
             "seed": ("INT", {"default": 0, "min": 0}),
             "think": ("BOOLEAN", {"default": False}),
-            "candidate_count": ("INT", {"default": 1, "min": 1}),
+            "candidate_count": ("INT", {"default": 1, "min": 1, "max": 8}),
         },
         "optional": {
             "image": ("IMAGE", {"default": None}),
@@ -100,9 +144,6 @@ class GeminiInference(BaseInference):
             parts.append(
                 {"inline_data": {"data": image_bytes, "mime_type": "image/png"}}
             )
-
-        # Add response length limit
-        prompt = f"{prompt}\n---\n결과는 {max_output_tokens//2}개의 단어 이내로 작성해주세요."
         parts.append({"text": prompt})
 
         # Caching request
@@ -178,7 +219,7 @@ class GeminiInference(BaseInference):
                 raise ValueError(msg)
             logger.warning(warning_msg)
         else:
-            # NOTE: Fallback to Gemini 2.0 Flash if all candidates are prohibited
+            # NOTE: Fallback to Gemini 2.0 Flash if all candidates are prohibited, as it somewhat allows prohibited content.
             fallback_model = "models/gemini-2.0-flash"
             if model != fallback_model:
                 # NOTE: Avoid the prohibited content by generating multiple candidates
@@ -197,7 +238,7 @@ class GeminiInference(BaseInference):
             logger.error(msg)
             raise ValueError(msg)
 
-        cls.REQUEST_CACHE[cache_key] = result
+        cls._set_cache(cache_key, result)
         return (result,)
 
     @classmethod
@@ -243,9 +284,13 @@ class GeminiInference(BaseInference):
 
     @classmethod
     @lru_cache
-    def get_latest_model(cls, client) -> str:
+    def get_latest_model(cls, client, model: str) -> str:
         """Get the latest model."""
-        GEMIMI_MODEL_NAME_PATTERN = r"^models/gemini-[\d\.]+-flash$"
+        if model == "latest":
+            GEMIMI_MODEL_NAME_PATTERN = r"^models/gemini-[\d\.]+-flash$"
+        else:
+            suffix = model.removeprefix("latest")
+            GEMIMI_MODEL_NAME_PATTERN = rf"^models/gemini-[\d\.]+{suffix}$"
 
         valid_models = []
         for model in client.models.list():
@@ -255,6 +300,7 @@ class GeminiInference(BaseInference):
                 and model.name not in valid_models
             ):
                 valid_models.append(model.name)
+        logger.info(f"Available Gemini models: {valid_models}")
         return max(valid_models)
 
     @classmethod
@@ -262,16 +308,17 @@ class GeminiInference(BaseInference):
         cls,
         client,
         system_instruction: str,
-        model: str = "latest",
+        model: str = "latest-flash",
         max_output_tokens: int = 100,
         seed: int = 0,
         think: bool = False,
         candidate_count: int = 1,
+        **kwargs,
     ) -> dict:
         from google.genai.types import GenerateContentConfig, ThinkingConfig
 
-        if model == "latest":
-            model = cls.get_latest_model(client)
+        if "latest" in model:
+            model = cls.get_latest_model(client, model)
 
         return {
             "model": model,
@@ -281,18 +328,29 @@ class GeminiInference(BaseInference):
                 max_output_tokens=max_output_tokens,
                 seed=seed,
                 candidate_count=candidate_count,
-                # Fixed parameters
-                stop_sequences=None,
-                top_k=None,
-                top_p=None,
-                temperature=None,
                 response_mime_type="text/plain",
+                **kwargs,  # optional parameters: temperature, top_k, top_p, stop_sequences
             ),
         }
 
 
 class OllamaInference(BaseInference):
-    """Ollama inference."""
+    """Inference with Ollama API.
+
+    Args:
+        system_instruction (str): System instruction.
+        prompt (str): Prompt.
+        ollama_url (str): Ollama URL. Must be set in the `custom_nodes/comfyui-alchemine-pack/config.json` file.
+        model (str): Model name. Must be available in the Ollama API.
+        max_output_tokens (int): Maximum output tokens.
+        seed (int): Seed.
+        think (bool): Whether to use thinking mode.
+        image (list[torch.Tensor] | None): Image tensor.
+            Must be a 4D tensor in the shape of [B, H, W, C].
+
+    Returns:
+        tuple[str]: Response.
+    """
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -400,7 +458,7 @@ class OllamaInference(BaseInference):
         response.raise_for_status()
         result = response.json()["message"]["content"]
 
-        cls.REQUEST_CACHE[cache_key] = result
+        cls._set_cache(cache_key, result)
         return (result,)
 
     @classmethod
@@ -506,7 +564,7 @@ class TextEditingInference(BaseInference):
         # Reset seed
         torch.set_rng_state(rng_state)
 
-        cls.REQUEST_CACHE[cache_key] = edited_text
+        cls._set_cache(cache_key, edited_text)
         return (edited_text,)
 
     @classmethod

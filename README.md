@@ -1,6 +1,9 @@
 # ComfyUI-Alchemine-Pack
 ![](workflow/workflow.png)
 
+> ⚠️ **WIP (Work In Progress)**
+
+
 ComfyUI-Alchemine-Pack is a custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI).
 It provides nodes to assist with various workflow tasks, such as prompt processing.
 
