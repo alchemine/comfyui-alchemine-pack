@@ -1,5 +1,11 @@
 """Custom nodes mappings."""
 
+from .nodes.danbooru import (
+    DanbooruRelatedTagsRetriever,
+    DanbooruPostTagsRetriever,
+    DanbooruPopularPostsTagsRetriever,
+    DanbooruPostsDownloader,
+)
 from .nodes.flow_control import SignalSwitch
 from .nodes.inference import GeminiInference, OllamaInference, TextEditingInference
 from .nodes.input import WidthHeight
@@ -16,27 +22,26 @@ from .nodes.prompt import (
     AutoBreak,
     SubstituteTags,
 )
-from .nodes.danbooru import (
-    DanbooruRelatedTagsRetriever,
-    DanbooruPostTagsRetriever,
-    DanbooruPopularPostsTagsRetriever,
-    DanbooruPostsDownloader,
-)
 
 
 NODE_CLASS_MAPPINGS = {
-    # AlcheminePack/FlowControl #########################################################
+    # AlcheminePack/Danbooru #########################################################
+    "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
+    "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
+    "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
+    "DanbooruPostsDownloader": DanbooruPostsDownloader,
+    # AlcheminePack/FlowControl ######################################################
     "SignalSwitch": SignalSwitch,
-    # AlcheminePack/Inference ###########################################################
+    # AlcheminePack/Inference ########################################################
     "GeminiInference": GeminiInference,
     "OllamaInference": OllamaInference,
     "TextEditingInference": TextEditingInference,
-    # AlcheminePack/Input ###############################################################
+    # AlcheminePack/Input ############################################################
     "WidthHeight": WidthHeight,
     # AlcheminePack/IO ###############################################################
     "AsyncSaveImage": AsyncSaveImage,
     "PreviewLatestImage": PreviewLatestImage,
-    # AlcheminePack/Lora ###############################################################
+    # AlcheminePack/Lora #############################################################
     "DownloadImage": DownloadImage,
     "SaveImageWithText": SaveImageWithText,
     "ProcessTags": ProcessTags,
@@ -48,29 +53,30 @@ NODE_CLASS_MAPPINGS = {
     "RemoveWeights": RemoveWeights,
     "AutoBreak": AutoBreak,
     "SubstituteTags": SubstituteTags,
-    "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
-    "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
-    "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
-    "DanbooruPostsDownloader": DanbooruPostsDownloader,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    # AlcheminePack/FlowControl #########################################################
+    # AlcheminePack/Danbooru #########################################################
+    "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
+    "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
+    "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",
+    "DanbooruPostsDownloader": "Danbooru Posts Downloader",
+    # AlcheminePack/FlowControl ######################################################
     "SignalSwitch": "Signal Switch",
-    # AlcheminePack/Inference #########################################################
+    # AlcheminePack/Inference ########################################################
     "GeminiInference": "Gemini Inference",
     "OllamaInference": "Ollama Inference",
     "TextEditingInference": "Text Editing Inference",
-    # AlcheminePack/Input ###############################################################
+    # AlcheminePack/Input ############################################################
     "WidthHeight": "Width Height",
     # AlcheminePack/IO ###############################################################
     "AsyncSaveImage": "Async Save Image",
     "PreviewLatestImage": "Preview Latest Image",
-    # AlcheminePack/Lora ###############################################################
+    # AlcheminePack/Lora #############################################################
     "DownloadImage": "Download Image",
     "SaveImageWithText": "Save Image With Text",
-    # AlcheminePack/Prompt ###############################################################
+    # AlcheminePack/Prompt ###########################################################
     "ProcessTags": "Process Tags",
     "FilterTags": "Filter Tags",
     "FilterSubtags": "Filter Subtags",
@@ -80,8 +86,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RemoveWeights": "Remove Weights",
     "AutoBreak": "Auto Break",
     "SubstituteTags": "Substitute Tags",
-    "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
-    "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
-    "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",
-    "DanbooruPostsDownloader": "Danbooru Posts Downloader",
 }

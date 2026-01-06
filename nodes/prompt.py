@@ -1,5 +1,7 @@
-import numbers
+"""Nodes in AlcheminePack/Prompt."""
+
 import re
+import numbers
 import textwrap
 from functools import wraps
 

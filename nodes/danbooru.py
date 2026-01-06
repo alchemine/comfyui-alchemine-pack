@@ -1,15 +1,15 @@
+"""Nodes in AlcheminePack/Danbooru."""
+
 import os
 import re
+import asyncio
 from math import ceil
+from pathlib import Path
 from random import Random
 from collections import defaultdict
-from os.path import exists, relpath
-from pathlib import Path
-
-import asyncio
+from os.path import exists, relpath, splitext
 
 import folder_paths
-from playwright.async_api import async_playwright
 
 from .utils import get_logger
 
@@ -110,12 +110,7 @@ class BaseDanbooru:
 
     @staticmethod
     def convert_from_danbooru_tag(tag: str) -> str:
-        """Convert a Danbooru tag to a tag.
-
-        Examples:
-            Input: cat
-            Output: cat
-        """
+        """Convert a Danbooru tag to a tag."""
         # 1. Replace parentheses with brackets
         tag = tag.strip()
         tag = tag.replace(r"(", r"\(").replace(r")", r"\)")
@@ -218,6 +213,8 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
         cls, queries: list[str], category: str, order: str
     ) -> list[dict]:
         """Request Danbooru API."""
+        from playwright.async_api import async_playwright
+
         base_url = "https://danbooru.donmai.us/related_tag.json?commit=Search&search[category]={category}&search[order]={order}&search[query]={query}"
 
         responses = []
@@ -315,6 +312,8 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
 
     @classmethod
     async def aexecute(cls, post_id: str) -> tuple[str, str, str, str, str, str, str]:
+        from playwright.async_api import async_playwright
+
         url = f"https://danbooru.donmai.us/posts/{post_id}.json"
         if url not in cls.REQUEST_CACHE:
             async with async_playwright() as p:
@@ -467,10 +466,9 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
 
     @classmethod
     async def arequest(cls, date: str, scale: str, n: int, random: bool) -> list[dict]:
-        """Request Danbooru API.
+        """Request Danbooru API."""
+        from playwright.async_api import async_playwright
 
-        NOTE: Select `n` posts from `n` pages
-        """
         params = {}
         if date:
             params["date"] = date
@@ -527,6 +525,8 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
 class DanbooruPostsDownloader(BaseDanbooru):
     """Download posts from Danbooru."""
 
+    N_POSTS_PER_PAGE = 20  # Danbooru API default limit
+
     INPUT_TYPES = lambda: {
         "required": {
             "tags": ("STRING", {"default": ""}),
@@ -560,6 +560,8 @@ class DanbooruPostsDownloader(BaseDanbooru):
         dir_path: str = "",
         prefix: str = "",
     ) -> tuple[list[str]]:
+        from playwright.async_api import async_playwright
+
         # Set default values
         output_dir = Path(folder_paths.get_output_directory())
         dir_path_obj = output_dir / dir_path
@@ -590,7 +592,7 @@ class DanbooruPostsDownloader(BaseDanbooru):
                     continue
 
                 file_url = data["file_url"]
-                extension = os.path.splitext(file_url.split("?")[0])[-1]
+                extension = splitext(file_url.split("?")[0])[-1]
                 if prefix:
                     file_name = f"{prefix}_{idx}{extension}"
                 else:
@@ -616,17 +618,18 @@ class DanbooruPostsDownloader(BaseDanbooru):
 
     @classmethod
     async def arequest(cls, tags: str, n: int) -> list[dict]:
-        """Request Danbooru API.
+        """Request Danbooru API."""
+        from playwright.async_api import async_playwright
 
-        NOTE: Select `n` posts from `n` pages
-        """
         params = {}
         params["tags"] = tags
+
+        n_pages = ceil(n / cls.N_POSTS_PER_PAGE)
 
         datas = []
         async with async_playwright() as p:
             api_context = await p.request.new_context()
-            for page in range(1, 1 + n):
+            for page in range(1, 1 + n_pages):
                 params["page"] = page
                 params_str = "&".join([f"{k}={v}" for k, v in params.items()])
                 url = f"https://danbooru.donmai.us/posts.json?{params_str}"
@@ -648,7 +651,7 @@ class DanbooruPostsDownloader(BaseDanbooru):
                 json_data = await resp.json()
                 cls.REQUEST_CACHE[url] = json_data
                 datas.extend(json_data)
-        return datas
+        return datas[:n]
 
     @classmethod
     def IS_CHANGED(cls, tags: str, n: int, dir_path: str, prefix: str) -> tuple:
@@ -664,12 +667,9 @@ if __name__ == "__main__":
     #     n_min_tags=10,
     #     n_max_tags=100,
     # )
-    # result = DanbooruPostTagsRetriever.execute(post_id="9557805")
+    result = DanbooruPostTagsRetriever.execute(post_id="9557805")
     # result = DanbooruPopularPostsTagsRetriever.execute(
     #     date="", scale="day", n=1, random=False, seed=0
     # )
-
-    result = DanbooruPostsDownloader.execute(
-        tags="1girl solo", n=1, dir_path="output/custom/cecilia"
-    )
+    # result = DanbooruPostsDownloader.execute(tags="1girl solo", n=1, dir_path="output")
     print(result)
