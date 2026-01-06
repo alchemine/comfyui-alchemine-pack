@@ -112,7 +112,7 @@ class BasePrompt:
             # logger.warning(f"Unexpected tag format: {tag}")
             pass
         return tag
-
+image.png
     @staticmethod
     def remove_weight(tag: str) -> str:
         """Remove weight from a tag.
@@ -135,6 +135,33 @@ class BasePrompt:
         else:
             pass
         return tag
+
+    @staticmethod
+    def split_tags(text: str) -> list[str]:
+        """Split tags by comma, preserving commas inside parentheses.
+
+        Examples:
+            Input: "(masterpiece), (best quality:1.2), (highres, absurdres)"
+            Output: ["(masterpiece)", " (best quality:1.2)", " (highres, absurdres)"]
+        """
+        result = []
+        depth = 0
+        current = ""
+        for char in text:
+            if char == "(":
+                depth += 1
+                current += char
+            elif char == ")":
+                depth -= 1
+                current += char
+            elif char == "," and depth == 0:
+                result.append(current)
+                current = ""
+            else:
+                current += char
+        if current:
+            result.append(current)
+        return result
 
     @classmethod
     def preprocess_tags(cls, text: str, fixed_tags: str) -> tuple[str, str]:
@@ -220,6 +247,10 @@ class ProcessTags(BasePrompt):
         fixed_tags: str = "",
     ) -> tuple[str, list[str]]:
         """Process tags from a prompt."""
+        # Save original separators BEFORE preprocessing (standardize_prompt changes whitespace)
+        original_parts = re.split(r"(\s*BREAK\s*)", text)
+        separators = original_parts[1::2]
+
         text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
 
         filtered_tags_list = []
@@ -246,6 +277,14 @@ class ProcessTags(BasePrompt):
 
         if auto_break and clip is not None:
             text = AutoBreak.execute(clip=clip, text=text)[0]
+            # AutoBreak already formats BREAK correctly, no need to re-join
+        else:
+            # Re-join with original separators (preserve original whitespace around BREAK)
+            groups = text.split("BREAK")
+            text = groups[0] if groups else ""
+            for i, sep in enumerate(separators):
+                if i + 1 < len(groups):
+                    text += sep + groups[i + 1]
 
         return (text, filtered_tags_list)
 
@@ -301,9 +340,14 @@ class FilterTags(BasePrompt):
         preprocess: bool = True,
     ) -> tuple[str, str]:
         """Filter blacklisted tags from a prompt."""
-        # 1. Split tokens by BREAK
+        # 1. Split tokens by BREAK (preserve surrounding whitespace)
+        # Save original separators BEFORE preprocessing (standardize_prompt changes whitespace)
+        original_parts = re.split(r"(\s*BREAK\s*)", text)
+        separators = original_parts[1::2]  # Original BREAK with surrounding whitespace
+
         if preprocess:
             text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
+
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -357,10 +401,13 @@ class FilterTags(BasePrompt):
                 ]
             )
 
-        # 4. Join groups by BREAK
-        processed_text = "\nBREAK\n\n".join(new_groups)
+        # 4. Join groups by original BREAK separators (preserve whitespace)
+        processed_text = new_groups[0] if new_groups else ""
+        for i, sep in enumerate(separators):
+            if i + 1 < len(new_groups):
+                processed_text += sep + new_groups[i + 1]
         # Remove trailing comma before BREAK
-        processed_text = re.sub(r",\s*\n?BREAK", "\nBREAK", processed_text)
+        processed_text = re.sub(r",(\s*BREAK)", r"\1", processed_text)
         filtered_tags = ", ".join(filtered_tag_list)
         return (processed_text, filtered_tags)
 
@@ -402,9 +449,14 @@ class FilterSubtags(BasePrompt):
         cls, text: str, fixed_tags: str = "", preprocess: bool = True
     ) -> tuple[str, str]:
         """Filter subtags from a prompt."""
-        # 1. Split tokens by BREAK
+        # 1. Split tokens by BREAK (preserve surrounding whitespace)
+        # Save original separators BEFORE preprocessing (standardize_prompt changes whitespace)
+        original_parts = re.split(r"(\s*BREAK\s*)", text)
+        separators = original_parts[1::2]  # Original BREAK with surrounding whitespace
+
         if preprocess:
             text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
+
         groups = text.split("BREAK")
         fixed_tags_set = set(
             [
@@ -446,10 +498,13 @@ class FilterSubtags(BasePrompt):
                 ]
             )
 
-        # 3. Join groups by BREAK
-        processed_text = "\nBREAK\n\n".join(new_groups)
+        # 3. Join groups by original BREAK separators (preserve whitespace)
+        processed_text = new_groups[0] if new_groups else ""
+        for i, sep in enumerate(separators):
+            if i + 1 < len(new_groups):
+                processed_text += sep + new_groups[i + 1]
         # Remove trailing comma before BREAK
-        processed_text = re.sub(r",\s*\n?BREAK", "\nBREAK", processed_text)
+        processed_text = re.sub(r",(\s*BREAK)", r"\1", processed_text)
         filtered_tags = ", ".join(filtered_tag_list)
         return (processed_text, filtered_tags)
 
@@ -490,12 +545,7 @@ class ReplaceUnderscores(BasePrompt):
 
 
 class FixBreakAfterTIPO(BasePrompt):
-    """Fix break after TIPO in a prompt.
-
-    Examples:
-        Input: tag, (BREAK:-1), tags
-        Output: tag BREAK tags
-    """
+    """Fix break after TIPO in a prompt."""
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -513,7 +563,11 @@ class FixBreakAfterTIPO(BasePrompt):
     def execute(cls, text: str) -> tuple[str]:
         """Fix break after TIPO in a prompt."""
         # Remove a weight of BREAK (fix TIPO output prompt)
-        processed_text = re.sub(r",?\s*\(BREAK:-1\),?\s*", " BREAK ", text)
+        # Step 1: Replace (BREAK:-1) with BREAK
+        processed_text = text.replace("(BREAK:-1)", "BREAK")
+        # Step 2: Remove commas around BREAK (preserve whitespace)
+        processed_text = re.sub(r",(\s*BREAK)", r"\1", processed_text)
+        processed_text = re.sub(r"(BREAK\s*),", r"\1", processed_text)
         return (processed_text,)
 
     @classmethod
@@ -660,14 +714,23 @@ class RemoveWeights(BasePrompt):
     @classmethod
     def execute(cls, text: str) -> tuple[str]:
         """Remove weights from a prompt."""
-        text_groups = []
-        groups = text.split("BREAK")
+        # Split by BREAK (preserve surrounding whitespace)
+        parts = re.split(r"(\s*BREAK\s*)", text)
+        groups = parts[::2]  # Even indices: actual groups
+        separators = parts[1::2]  # Odd indices: BREAK with surrounding whitespace
+
+        new_groups = []
         for group in groups:
-            tags = [cls.remove_weight(t) for t in group.split(",") if t.strip()]
-            text_groups.append(", ".join(tags))
-        processed_text = "\nBREAK\n\n".join(text_groups)
+            tags = [cls.remove_weight(t) for t in cls.split_tags(group) if t.strip()]
+            new_groups.append(", ".join(tags))
+
+        # Join groups by original BREAK separators (preserve whitespace)
+        processed_text = new_groups[0] if new_groups else ""
+        for i, sep in enumerate(separators):
+            if i + 1 < len(new_groups):
+                processed_text += sep + new_groups[i + 1]
         # Remove trailing comma before BREAK
-        processed_text = re.sub(r",\s*\n?BREAK", "\nBREAK", processed_text)
+        processed_text = re.sub(r",(\s*BREAK)", r"\1", processed_text)
 
         return (processed_text,)
 
