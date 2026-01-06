@@ -1,3 +1,5 @@
+"""Nodes in AlcheminePack/IO. (experimental nodes)"""
+
 # Base node(Save Image): https://github.com/comfyanonymous/ComfyUI/blob/a125cd84b054a57729b5eecab930ca9408719832/nodes.py#L1561
 
 import os
@@ -44,7 +46,7 @@ class AsyncSaveImage:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "io"
+    CATEGORY = "AlcheminePack/IO"
     DESCRIPTION = "Saves the input images to your ComfyUI output directory."
 
     @staticmethod
@@ -125,7 +127,7 @@ class PreviewLatestImage:
             },
         }
 
-    CATEGORY = "io"
+    CATEGORY = "AlcheminePack/IO"
 
     RETURN_TYPES = ("IMAGE", "MASK")
     FUNCTION = "load_image"

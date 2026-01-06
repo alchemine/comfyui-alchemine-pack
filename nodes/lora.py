@@ -1,5 +1,6 @@
+"""Nodes in AlcheminePack/Lora. (experimental nodes)"""
+
 import os
-from glob import glob
 from hashlib import md5
 from pathlib import Path
 from os.path import exists, relpath
@@ -9,11 +10,6 @@ import requests
 import numpy as np
 import folder_paths
 from PIL import Image
-
-from .utils import get_logger
-
-
-logger = get_logger()
 
 
 #################################################################
@@ -29,12 +25,7 @@ class BaseLora:
 # Nodes
 #################################################################
 class DownloadImage(BaseLora):
-    """Download an image from url.
-
-    Examples:
-        Input: https://cdn.donmai.us/original/92/64/926447d2f191c9c778afbe3364276cf1.jpg
-        Output: Image
-    """
+    """Download an image from url."""
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -79,12 +70,7 @@ class DownloadImage(BaseLora):
 
 
 class SaveImageWithText(BaseLora):
-    """Save an image with a text.
-
-    Examples:
-        Input: image, text
-        Output: file_path
-    """
+    """Save an image with a text."""
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -132,16 +118,3 @@ class SaveImageWithText(BaseLora):
         img.save(image_path, compress_level=4)
 
         return (relpath(image_path, output_dir), relpath(text_path, output_dir))
-
-    # # always overwrite
-    # @classmethod
-    # def IS_CHANGED(cls, image, text: str, dir_path: str, prefix: str = "") -> str:
-    #     return image, text, dir_path, prefix
-
-
-if __name__ == "__main__":
-    result = DownloadImage.execute(
-        url="https://cdn.donmai.us/original/92/64/926447d2f191c9c778afbe3364276cf1.jpg",
-        dir_path="lora/crotch_seamless",
-    )
-    print(result[1])

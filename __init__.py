@@ -3,6 +3,8 @@
 from .nodes.flow_control import SignalSwitch
 from .nodes.inference import GeminiInference, OllamaInference, TextEditingInference
 from .nodes.input import WidthHeight
+from .nodes.io import AsyncSaveImage, PreviewLatestImage
+from .nodes.lora import DownloadImage, SaveImageWithText
 from .nodes.prompt import (
     ProcessTags,
     FilterSubtags,
@@ -20,8 +22,6 @@ from .nodes.danbooru import (
     DanbooruPopularPostsTagsRetriever,
     DanbooruPostsDownloader,
 )
-from .nodes.lora import DownloadImage, SaveImageWithText
-from .nodes.io import AsyncSaveImage, PreviewLatestImage
 
 
 NODE_CLASS_MAPPINGS = {
@@ -33,6 +33,12 @@ NODE_CLASS_MAPPINGS = {
     "TextEditingInference": TextEditingInference,
     # AlcheminePack/Input ###############################################################
     "WidthHeight": WidthHeight,
+    # AlcheminePack/IO ###############################################################
+    "AsyncSaveImage": AsyncSaveImage,
+    "PreviewLatestImage": PreviewLatestImage,
+    # AlcheminePack/Lora ###############################################################
+    "DownloadImage": DownloadImage,
+    "SaveImageWithText": SaveImageWithText,
     "ProcessTags": ProcessTags,
     "FilterTags": FilterTags,
     "FilterSubtags": FilterSubtags,
@@ -46,10 +52,6 @@ NODE_CLASS_MAPPINGS = {
     "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
     "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
     "DanbooruPostsDownloader": DanbooruPostsDownloader,
-    "DownloadImage": DownloadImage,
-    "SaveImageWithText": SaveImageWithText,
-    "AsyncSaveImage": AsyncSaveImage,
-    "PreviewLatestImage": PreviewLatestImage,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -62,6 +64,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "TextEditingInference": "Text Editing Inference",
     # AlcheminePack/Input ###############################################################
     "WidthHeight": "Width Height",
+    # AlcheminePack/IO ###############################################################
+    "AsyncSaveImage": "Async Save Image",
+    "PreviewLatestImage": "Preview Latest Image",
+    # AlcheminePack/Lora ###############################################################
+    "DownloadImage": "Download Image",
+    "SaveImageWithText": "Save Image With Text",
+    # AlcheminePack/Prompt ###############################################################
     "ProcessTags": "Process Tags",
     "FilterTags": "Filter Tags",
     "FilterSubtags": "Filter Subtags",
@@ -75,8 +84,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
     "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",
     "DanbooruPostsDownloader": "Danbooru Posts Downloader",
-    "DownloadImage": "Download Image",
-    "SaveImageWithText": "Save Image With Text",
-    "AsyncSaveImage": "Async Save Image",
-    "PreviewLatestImage": "Preview Latest Image",
 }
