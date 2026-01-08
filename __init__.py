@@ -13,8 +13,8 @@ from .nodes.io import AsyncSaveImage, PreviewLatestImage
 from .nodes.lora import DownloadImage, SaveImageWithText
 from .nodes.prompt import (
     ProcessTags,
-    FilterSubtags,
     FilterTags,
+    FilterSubtags,
     ReplaceUnderscores,
     FixBreakAfterTIPO,
     TokenAnalyzer,
@@ -44,6 +44,7 @@ NODE_CLASS_MAPPINGS = {
     # AlcheminePack/Lora #############################################################
     "DownloadImage": DownloadImage,
     "SaveImageWithText": SaveImageWithText,
+    # AlcheminePack/Prompt #############################################################
     "ProcessTags": ProcessTags,
     "FilterTags": FilterTags,
     "FilterSubtags": FilterSubtags,
@@ -76,7 +77,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # AlcheminePack/Lora #############################################################
     "DownloadImage": "Download Image",
     "SaveImageWithText": "Save Image With Text",
-    # AlcheminePack/Prompt ###########################################################
+    # AlcheminePack/Prompt #############################################################
     "ProcessTags": "Process Tags",
     "FilterTags": "Filter Tags",
     "FilterSubtags": "Filter Subtags",
