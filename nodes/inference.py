@@ -10,7 +10,7 @@ import requests
 import numpy as np
 from PIL import Image
 
-from .utils import get_logger, CONFIG
+from .lib.utils import get_logger, CONFIG
 
 
 logger = get_logger()

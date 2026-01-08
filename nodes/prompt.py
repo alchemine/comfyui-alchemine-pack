@@ -7,7 +7,7 @@ from functools import wraps
 
 import yaml
 
-from .utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
+from .lib.utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
 
 
 logger = get_logger()
@@ -112,7 +112,7 @@ class BasePrompt:
             # logger.warning(f"Unexpected tag format: {tag}")
             pass
         return tag
-image.png
+
     @staticmethod
     def remove_weight(tag: str) -> str:
         """Remove weight from a tag.

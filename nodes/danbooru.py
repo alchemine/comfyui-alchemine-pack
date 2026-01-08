@@ -11,7 +11,7 @@ from os.path import exists, relpath, splitext
 
 import folder_paths
 
-from .utils import get_logger
+from .lib.utils import get_logger
 
 
 logger = get_logger()

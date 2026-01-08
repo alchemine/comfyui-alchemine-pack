@@ -1,4 +1,4 @@
-"""Utility module for the Alchemine Pack."""
+"""Utility module for nodes."""
 
 import re
 import json
@@ -6,10 +6,11 @@ import logging
 from pathlib import Path
 from functools import wraps
 
+
 #################################################################
 # Constants
 #################################################################
-ROOT_DIR = Path(__file__).parent.parent
+ROOT_DIR = Path(__file__).parent.parent.parent
 CUSTOM_NODES_DIR = ROOT_DIR.parent
 with open(ROOT_DIR / "config.json", "r") as f:
     CONFIG = json.load(f)
