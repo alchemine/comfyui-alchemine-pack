@@ -276,7 +276,7 @@ class ProcessTags(BasePrompt):
                 filtered_tags_list.append(cur_filtered_tags)
 
         if auto_break and clip is not None:
-            text = AutoBreak.execute(clip=clip, text=text)[0]
+            text = SDXLAutoBreak.execute(clip=clip, text=text)[0]
             # AutoBreak already formats BREAK correctly, no need to re-join
         else:
             # Re-join with original separators (preserve original whitespace around BREAK)
@@ -575,8 +575,8 @@ class FixBreakAfterTIPO(BasePrompt):
         return (text,)
 
 
-class TokenAnalyzer(BasePrompt):
-    """Analyze tokens in a prompt."""
+class SDXLTokenAnalyzer(BasePrompt):
+    """Analyze tokens in a prompt (SDXL only - requires clip_l and clip_g)."""
 
     INPUT_TYPES = lambda: {
         "required": {
@@ -739,8 +739,8 @@ class RemoveWeights(BasePrompt):
         return (text,)
 
 
-class AutoBreak(BasePrompt):
-    """Automatically insert BREAK to keep each segment within 75 tokens."""
+class SDXLAutoBreak(BasePrompt):
+    """Automatically insert BREAK to keep each segment within 75 tokens (SDXL only - requires clip_g)."""
 
     INPUT_TYPES = lambda: {
         "required": {

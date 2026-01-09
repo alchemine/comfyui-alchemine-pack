@@ -17,9 +17,9 @@ from .nodes.prompt import (
     FilterSubtags,
     ReplaceUnderscores,
     FixBreakAfterTIPO,
-    TokenAnalyzer,
+    SDXLTokenAnalyzer,
     RemoveWeights,
-    AutoBreak,
+    SDXLAutoBreak,
     SubstituteTags,
 )
 
@@ -50,9 +50,9 @@ NODE_CLASS_MAPPINGS = {
     "FilterSubtags": FilterSubtags,
     "ReplaceUnderscores": ReplaceUnderscores,
     "FixBreakAfterTIPO": FixBreakAfterTIPO,
-    "TokenAnalyzer": TokenAnalyzer,
+    "SDXLTokenAnalyzer": SDXLTokenAnalyzer,
     "RemoveWeights": RemoveWeights,
-    "AutoBreak": AutoBreak,
+    "SDXLAutoBreak": SDXLAutoBreak,
     "SubstituteTags": SubstituteTags,
 }
 
@@ -83,8 +83,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FilterSubtags": "Filter Subtags",
     "ReplaceUnderscores": "Replace Underscores",
     "FixBreakAfterTIPO": "Fix Break After TIPO",
-    "TokenAnalyzer": "Token Analyzer",
+    "SDXLTokenAnalyzer": "SDXL Token Analyzer",
     "RemoveWeights": "Remove Weights",
-    "AutoBreak": "Auto Break",
+    "SDXLAutoBreak": "SDXL Auto Break",
     "SubstituteTags": "Substitute Tags",
 }
