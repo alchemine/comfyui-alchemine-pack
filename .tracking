@@ -1,8 +1,0 @@
-README.md
-.gitignore
-pyproject.toml
-nodes/prompt.py
-__init__.py
-.github/workflows/publish.yml
-.github/ISSUE_TEMPLATE/bug_report.md
-.github/ISSUE_TEMPLATE/feature_request.md
