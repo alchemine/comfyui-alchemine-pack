@@ -1,236 +1,287 @@
 # ComfyUI-Alchemine-Pack
-![](workflow/workflow.png)
 
-> ⚠️ **WIP (Work In Progress)**
+A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, Danbooru integration, LLM inference, and workflow control.
 
+## Installation
 
-ComfyUI-Alchemine-Pack is a custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI).
-It provides nodes to assist with various workflow tasks, such as prompt processing.
+1. Clone or copy this repository into the `custom_nodes` directory of your ComfyUI installation.
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Restart ComfyUI.
 
 ## Provided Nodes
 
-### ProcessTags
-- **Description:**
-  - Refines tags in prompts, removes tags based on a blacklist (with wildcard support), removes subtags, replaces underscores, and offers various normalization options.
-  - Multiple refinement options can be applied at once, and a custom processor can be enabled.
-- **Category:** `AlcheminePack/Prompt`
-- **Inputs:**
-  - `text` (string): Input prompt text
-  - `blacklist_tags` (string): Comma-separated list of tags to remove (supports wildcards)
-  - `custom_processor` (boolean): Apply custom prompt normalization (default: True)
-  - `replace_underscores` (boolean): Replace underscores with spaces (default: True)
-  - `filter_tags` (boolean): Remove blacklisted tags (default: True)
-  - `filter_subtags` (boolean): Remove duplicate/unnecessary subtags (default: True)
-- **Outputs:**
-  - `processed_text` (refined string)
-  - `filtered_tags_list` (list of removed tags, grouped by operation)
-- **Example:**
-  - Input: `dog, cat, white dog, black cat`, blacklist_tags: `cat`, filter_tags: True, filter_subtags: True, replace_underscores: False
-  - Output: `white dog, black cat`, removed tags: `[cat]`
+### Prompt Nodes (`AlcheminePack/Prompt`)
 
-### FilterTags
-- **Description:**
-  - Removes tags from prompts that match the blacklist. Recognizes tags with various bracket/weight notations. Supports wildcards (see below).
-- **Category:** `AlcheminePack/Prompt`
-- **Inputs:**
-  - `text` (string)
-  - `blacklist_tags` (string, comma-separated, supports wildcards)
-- **Outputs:**
-  - `processed_text` (refined string)
-  - `filtered_tags` (comma-separated list of removed tags)
-- **Example:**
-  - Input: `dog, cat, white dog, black cat`, blacklist_tags: `cat`
-  - Output: `dog, white dog, black cat`, removed tags: `cat`
+![Prompt Workflow](workflows/comfyui-alchemine-pack-workflow-Prompt.png)
 
-### FilterSubtags
-- **Description:**
-  - Removes duplicate or unnecessary subtags in prompts and normalizes various bracket/nesting/weight notations.
-- **Category:** `AlcheminePack/Prompt`
-- **Input:** `text` (string)
-- **Outputs:**
-  - `processed_text` (refined string)
-  - `filtered_tags` (comma-separated list of removed subtags)
-- **Example:**
-  - Input: `dog, cat, white dog, black cat`
-  - Output: `white dog, black cat`
-  - Input: `(cat:0.9), (cat:1.1), black cat, (black cat)`
-  - Output: `(cat:0.9), (cat:1.1), black cat, (black cat)`
+| Node | Description |
+|------|-------------|
+| **ProcessTags** | Full pipeline for tag processing. Combines ReplaceUnderscores → FilterTags → FilterSubtags → AutoBreak in sequence. |
+| **FilterTags** | Removes blacklisted tags from prompts. Supports wildcards defined in `resources/wildcards.yaml`. |
+| **FilterSubtags** | Removes duplicate/unnecessary subtags (e.g., `dog, white dog` → `white dog`). |
+| **ReplaceUnderscores** | Converts all underscores (`_`) to spaces. |
+| **FixBreakAfterTIPO** | Fixes BREAK token formatting after TIPO output (removes weights like `(BREAK:-1)`). |
+| **TokenAnalyzer** | Analyzes CLIP tokens in a prompt. Returns g/l tokenizer results with token counts. |
+| **RemoveWeights** | Removes all weight notations from tags (e.g., `(cat:1.2)` → `cat`). |
+| **AutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens. |
+| **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
 
-### ReplaceUnderscores
-- **Description:**
-  - Converts all underscores (_) in the prompt to spaces.
-- **Category:** `AlcheminePack/Prompt`
-- **Input:** `text` (string)
-- **Output:**
-  - `processed_text` (string with underscores replaced by spaces)
-- **Example:**
-  - Input: `dog_cat_white_dog_black_cat`
-  - Output: `dog cat white dog black cat`
+#### ProcessTags
 
-### CustomProcessor
-- **Description:**
-  - Custom processor for prompt text. Removes weights from BREAK tokens and normalizes prompt structure.
-- **Category:** `AlcheminePack/Prompt`
-- **Input:** `text` (string)
-- **Output:**
-  - `processed_text` (custom-processed string)
-- **Example:**
-  - Input: `tag, (BREAK:-1), tags`
-  - Output: `tag BREAK tags`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+| `replace_underscores` | BOOLEAN | True | Replace underscores with spaces |
+| `filter_tags` | BOOLEAN | True | Remove blacklisted tags |
+| `filter_subtags` | BOOLEAN | True | Remove duplicate/unnecessary subtags |
+| `auto_break` | BOOLEAN | False | Auto-insert BREAK for 75-token limit |
+| `clip` | CLIP | (optional) | Required for `auto_break` |
+| `blacklist_tags` | STRING | "" | Comma-separated blacklist (supports wildcards) |
+| `fixed_tags` | STRING | "" | Tags to preserve regardless of filtering |
 
-## Wildcard Support
+#### FilterTags
 
-- The blacklist in `FilterTags` and `ProcessTags` supports wildcards defined in `resources/wildcards.yaml`.
-- Example: Using `__color__` in the blacklist will match any color defined in the YAML file (e.g., `red`, `blue`, `green`, etc.).
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+| `blacklist_tags` | STRING | "" | Comma-separated blacklist (supports wildcards) |
+| `fixed_tags` | STRING | "" | Tags to preserve regardless of filtering |
 
-## Installation & Usage
+#### SubstituteTags
 
-1. Copy or clone this repository into the `custom_nodes` directory of your ComfyUI installation.
-2. Restart ComfyUI. You will then be able to use each node from the `AlcheminePack/Prompt` category in your workflow.
-
-## Examples
-
-Below are usage examples for each node.
-
-```
-[ProcessTags]
-Input: dog, cat, white dog, black cat (blacklist_tags: cat)
-Output: white dog, black cat (removed tags: [cat])
-
-[FilterTags]
-Input: dog, cat, white dog, black cat (blacklist_tags: cat)
-Output: dog, white dog, black cat (removed tags: cat)
-
-[FilterSubtags]
-Input: dog, cat, white dog, black cat
-Output: white dog, black cat
-
-Input: (cat:0.9), (cat:1.1), black cat, (black cat)
-Output: (cat:0.9), (cat:1.1), black cat, (black cat)
-
-[ReplaceUnderscores]
-Input: dog_cat_white_dog_black_cat
-Output: dog cat white dog black cat
-
-[CustomProcessor]
-Input: tag, (BREAK:-1), tags
-Output: tag BREAK tags
-```
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+| `pattern` | STRING | "" | Regex pattern to match |
+| `repl` | STRING | "" | Replacement string |
+| `run_if` | STRING | "" | Only run if this pattern exists |
+| `skip_if` | STRING | "" | Skip if this pattern exists |
 
 ---
 
-# ComfyUI-Alchemine-Pack
-![](workflow/workflow.png)
+### Danbooru Nodes (`AlcheminePack/Danbooru`)
 
-ComfyUI-Alchemine-Pack은 [ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다.
-프롬프트 처리 등 다양한 워크플로우를 보조하는 노드를 제공합니다.
+![Danbooru Workflow](workflows/comfyui-alchemine-pack-workflow-Danbooru.png)
 
-## 제공 노드
+| Node | Description |
+|------|-------------|
+| **Danbooru Post Tags Retriever** | Retrieves tags from a specific Danbooru post by post ID. |
+| **Danbooru Related Tags Retriever** | Finds related tags by frequency/similarity from Danbooru. |
+| **Danbooru Popular Posts Tags Retriever** | Gets tags from popular posts (daily/weekly/monthly). |
+| **Danbooru Posts Downloader** | Downloads images from Danbooru based on search tags. |
 
-### ProcessTags
-- **설명:**
-  - 프롬프트에서 태그를 정제하고, 블랙리스트 기반 태그 제거(와일드카드 지원), 서브태그 제거, 언더스코어 제거 등 다양한 정규화 옵션을 제공합니다.
-  - 여러 정제 옵션을 한 번에 적용할 수 있으며, 커스텀 프로세서를 활성화할 수 있습니다.
-- **카테고리:** `AlcheminePack/Prompt`
-- **입력:**
-  - `text` (문자열): 입력 프롬프트 텍스트
-  - `blacklist_tags` (문자열): 제거할 태그 목록(쉼표 구분, 와일드카드 지원)
-  - `custom_processor` (boolean): 커스텀 프롬프트 정규화 적용 (기본값: True)
-  - `replace_underscores` (boolean): 언더스코어를 공백으로 변환 (기본값: True)
-  - `filter_tags` (boolean): 블랙리스트 태그 제거 (기본값: True)
-  - `filter_subtags` (boolean): 중복/불필요 서브태그 제거 (기본값: True)
-- **출력:**
-  - `processed_text` (정제된 문자열)
-  - `filtered_tags_list` (작업별로 제거된 태그 목록)
-- **예시:**
-  - 입력: `dog, cat, white dog, black cat`, blacklist_tags: `cat`, filter_tags: True, filter_subtags: True, replace_underscores: False
-  - 출력: `white dog, black cat`, 제거된 태그: `[cat]`
+> ⚠️ **Note:** Too many requests can result in blocking. Use caching and rate limiting.
 
-### FilterTags
-- **설명:**
-  - 프롬프트에서 블랙리스트에 해당하는 태그를 제거합니다. 다양한 괄호/가중치 표기법을 정규화하여 태그를 인식합니다. 와일드카드 지원(아래 참고).
-- **카테고리:** `AlcheminePack/Prompt`
-- **입력:**
-  - `text` (문자열)
-  - `blacklist_tags` (문자열, 쉼표 구분, 와일드카드 지원)
-- **출력:**
-  - `processed_text` (정제된 문자열)
-  - `filtered_tags` (제거된 태그 목록, 쉼표 구분)
-- **예시:**
-  - 입력: `dog, cat, white dog, black cat`, blacklist_tags: `cat`
-  - 출력: `dog, white dog, black cat`, 제거된 태그: `cat`
+#### Danbooru Post Tags Retriever
 
-### FilterSubtags
-- **설명:**
-  - 프롬프트 내에서 중복되거나 불필요한 서브태그를 제거하고, 다양한 괄호/중첩/가중치 표기법을 정규화합니다.
-- **카테고리:** `AlcheminePack/Prompt`
-- **입력:** `text` (문자열)
-- **출력:**
-  - `processed_text` (정제된 문자열)
-  - `filtered_tags` (제거된 서브태그 목록, 쉼표 구분)
-- **예시:**
-  - 입력: `dog, cat, white dog, black cat`
-  - 출력: `white dog, black cat`
-  - 입력: `(cat:0.9), (cat:1.1), black cat, (black cat)`
-  - 출력: `(cat:0.9), (cat:1.1), black cat, (black cat)`
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `post_id` | STRING | Danbooru post ID |
 
-### ReplaceUnderscores
-- **설명:**
-  - 프롬프트 내 모든 언더스코어(_)를 공백으로 변환합니다.
-- **카테고리:** `AlcheminePack/Prompt`
-- **입력:** `text` (문자열)
-- **출력:**
-  - `processed_text` (언더스코어가 공백으로 변환된 문자열)
-- **예시:**
-  - 입력: `dog_cat_white_dog_black_cat`
-  - 출력: `dog cat white dog black cat`
+| Output | Description |
+|--------|-------------|
+| `full_tags` | All tags (character + copyright + artist + general, excludes meta) |
+| `general_tags` | General tags only |
+| `character_tags` | Character tags only |
+| `copyright_tags` | Copyright tags only |
+| `artist_tags` | Artist tags only |
+| `meta_tags` | Meta tags only |
+| `image_url` | Image URL |
 
-### CustomProcessor
-- **설명:**
-  - 프롬프트 텍스트를 커스텀 정제합니다. BREAK 토큰의 가중치를 제거하고 프롬프트 구조를 정규화합니다.
-- **카테고리:** `AlcheminePack/Prompt`
-- **입력:** `text` (문자열)
-- **출력:**
-  - `processed_text` (커스텀 정제된 문자열)
-- **예시:**
-  - 입력: `tag, (BREAK:-1), tags`
-  - 출력: `tag BREAK tags`
+#### Danbooru Related Tags Retriever
 
-## 와일드카드 지원
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input tag(s) |
+| `category` | ENUM | "General" | Tag category filter (General/Character/Copyright/Artist/Meta) |
+| `order` | ENUM | "Frequency" | Sort order (Cosine/Jaccard/Overlap/Frequency) |
+| `threshold` | FLOAT | 0.3 | Minimum similarity threshold |
+| `n_min_tags` | INT | 0 | Minimum number of tags to return |
+| `n_max_tags` | INT | 100 | Maximum number of tags to return |
 
-- `FilterTags`와 `ProcessTags`의 블랙리스트는 `resources/wildcards.yaml`에 정의된 와일드카드를 지원합니다.
-- 예시: 블랙리스트에 `__color__`를 사용하면 YAML 파일에 정의된 모든 색상(`red`, `blue`, `green` 등)에 매칭됩니다.
+#### Danbooru Popular Posts Tags Retriever
 
-## 설치 및 사용법
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `date` | STRING | "" | Date (YYYY-MM-DD format, empty for latest) |
+| `scale` | ENUM | "day" | Time scale (day/week/month) |
+| `n` | INT | 1 | Number of posts to retrieve |
+| `random` | BOOLEAN | True | Random selection |
+| `seed` | INT | 0 | Random seed |
 
-1. 이 저장소를 ComfyUI의 `custom_nodes` 디렉터리에 복사 또는 클론합니다.
-2. ComfyUI를 재시작하면, 워크플로우 내에서 `AlcheminePack/Prompt` 카테고리에서 각 노드를 사용할 수 있습니다.
+#### Danbooru Posts Downloader
 
-## 예시
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `tags` | STRING | "" | Search tags |
+| `n` | INT | 1 | Number of images to download |
+| `dir_path` | STRING | "" | Output directory (relative to ComfyUI output folder) |
+| `prefix` | STRING | "" | Filename prefix |
 
-아래는 각 노드의 사용 예시입니다.
+---
+
+### Inference Nodes (`AlcheminePack/Inference`)
+
+![Inference Workflow](workflows/comfyui-alchemine-pack-workflow-Inference.png)
+
+| Node | Description |
+|------|-------------|
+| **Gemini Inference** | Generate text using Google Gemini API. Supports vision and thinking mode. |
+| **Ollama Inference** | Generate text using local Ollama API. Supports vision models. |
+| **Text Editing Inference** | Grammar correction and text editing using CoEdit model. |
+
+#### Gemini Inference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `system_instruction` | STRING | "You are a helpful assistant." | System prompt |
+| `prompt` | STRING | "Hello, world!" | User prompt |
+| `gemini_api_key` | STRING | "" | API key (or set in `config.json`) |
+| `model` | STRING | "latest" | Model name (`latest`, `latest-flash-lite`, `latest-pro-preview`, etc.) |
+| `max_output_tokens` | INT | 100 | Maximum output tokens |
+| `seed` | INT | 0 | Random seed |
+| `think` | BOOLEAN | False | Enable thinking mode |
+| `candidate_count` | INT | 1 | Number of candidates (1-8) |
+| `image` | IMAGE | (optional) | Input image for vision tasks |
+
+#### Ollama Inference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `system_instruction` | STRING | "You are a helpful assistant." | System prompt |
+| `prompt` | STRING | "Hello, world!" | User prompt |
+| `ollama_url` | STRING | "" | Ollama API URL (or set in `config.json`) |
+| `model` | STRING | "" | Model name (must be available in Ollama) |
+| `max_output_tokens` | INT | 100 | Maximum output tokens |
+| `seed` | INT | 0 | Random seed |
+| `think` | BOOLEAN | False | Enable thinking mode |
+| `image` | IMAGE | (optional) | Input image for vision tasks |
+
+#### Text Editing Inference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `predefined_system_instruction` | ENUM | "Fix the grammar" | Predefined instruction |
+| `system_instruction` | STRING | "" | Custom instruction (overrides predefined if set) |
+| `prompt` | STRING | (example text) | Input text to edit |
+| `seed` | INT | 0 | Random seed |
+
+Available predefined instructions:
+- Fix the grammar
+- Make this text coherent
+- Rewrite to make this easier to understand
+- Paraphrase this
+- Write this more formally
+- Write in a more neutral way
+
+---
+
+### Input Nodes (`AlcheminePack/Input`)
+
+![Input Workflow](workflows/comfyui-alchemine-pack-workflow-Input.png)
+
+| Node | Description |
+|------|-------------|
+| **Width Height** | Configurable width/height with swap and scale options. |
+
+#### Width Height
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | INT | 512 | Width value |
+| `height` | INT | 512 | Height value |
+| `swap` | BOOLEAN | False | Swap width and height |
+| `scale` | FLOAT | 1.0 | Scale multiplier |
+
+---
+
+### Flow Control Nodes (`AlcheminePack/FlowControl`)
+
+![Flow Control Workflow](workflows/comfyui-alchemine-pack-workflow-FlowControl.png)
+
+| Node | Description |
+|------|-------------|
+| **Signal Switch** | Passes `value` after `signal` is received. Controls execution order. |
+
+#### Signal Switch
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `signal` | ANY | Signal input (waits for this to complete) |
+| `value` | ANY | Value to pass through |
+
+**Use Case:** When you need sequential execution (e.g., run generation B only after generation A completes).
+
+---
+
+### IO Nodes (`AlcheminePack/IO`) *(Experimental)*
+
+| Node | Description |
+|------|-------------|
+| **AsyncSaveImage** | Saves images asynchronously using threading. |
+| **PreviewLatestImage** | Loads the latest image from output directory. |
+
+---
+
+### Lora Nodes (`AlcheminePack/Lora`) *(Experimental)*
+
+| Node | Description |
+|------|-------------|
+| **DownloadImage** | Downloads an image from URL. |
+| **SaveImageWithText** | Saves image with accompanying text file (for training datasets). |
+
+---
+
+## Wildcard Support
+
+The `FilterTags` and `ProcessTags` nodes support wildcards defined in `resources/wildcards.yaml`.
+
+**Example:** Using `__color__` in the blacklist will match all colors defined in the YAML file (e.g., `red`, `blue`, `green`, etc.).
+
+## Configuration
+
+Create a `config.json` file in the root of this package for API keys and settings:
+
+```json
+{
+  "inference": {
+    "gemini_api_key": "your-gemini-api-key",
+    "ollama_url": "http://localhost:11434"
+  }
+}
+```
+
+## Examples
+
+### ProcessTags Example
 
 ```
-[ProcessTags]
-입력: dog, cat, white dog, black cat (blacklist_tags: cat)
-출력: white dog, black cat (제거된 태그: [cat])
-
-[FilterTags]
-입력: dog, cat, white dog, black cat (blacklist_tags: cat)
-출력: dog, white dog, black cat (제거된 태그: cat)
-
-[FilterSubtags]
-입력: dog, cat, white dog, black cat
-출력: white dog, black cat
-
-입력: (cat:0.9), (cat:1.1), black cat, (black cat)
-출력: (cat:0.9), (cat:1.1), black cat, (black cat)
-
-[ReplaceUnderscores]
-입력: dog_cat_white_dog_black_cat
-출력: dog cat white dog black cat
-
-[CustomProcessor]
-입력: tag, (BREAK:-1), tags
-출력: tag BREAK tags
+Input: dog, cat, white dog, black cat
+Blacklist: cat
+Output: white dog, black cat
+Filtered: dog, cat
 ```
+
+### FilterSubtags Example
+
+```
+Input: dog, cat, white dog, black cat
+Output: white dog, black cat
+(Removes 'dog' and 'cat' as they are subtags of 'white dog' and 'black cat')
+```
+
+### SubstituteTags Example
+
+```
+# If "girl" doesn't exist, replace "1boy" with "1girl, 1boy"
+pattern: 1boy
+repl: 1girl, 1boy
+skip_if: girl
+```
+
+## License
+
+MIT License
