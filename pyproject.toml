@@ -1,10 +1,10 @@
 [project]
 name = "comfyui-alchemine-pack"
-description = """[[Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png)] Filter Tags, Filter Subtags, Replace Underscores, Token Analyzer, Auto Break, Substitute Tags, etc.
-[[Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png)] Post Tags Retriever, Related Tags Retriever, Popular Posts Tags Retriever, Posts Downloader
-[[Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png)] Gemini Inference, Ollama Inference, Text Editing Inference
-[[Flow Control](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png)] Signal Switch
-[[Input](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Input.png)] Width Height
+description = """[[a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png)] Filter Tags, Filter Subtags, Replace Underscores, Token Analyzer, Auto Break, Substitute Tags, etc.
+[[a/Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png)] Post Tags Retriever, Related Tags Retriever, Popular Posts Tags Retriever, Posts Downloader
+[[a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png)] Gemini Inference, Ollama Inference, Text Editing Inference
+[[a/Flow Control](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png)] Signal Switch
+[[a/Input](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Input.png)] Width Height
 """
 version = "1.0.0"
 license = { file = "LICENSE" }
@@ -16,7 +16,7 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/alchemine/comfyui-alchemine-pack"
-Documentation = "https://github.com/alchemine/comfyui-alchemine-pack/wiki"
+# Documentation = "https://github.com/alchemine/comfyui-alchemine-pack/wiki"
 "Bug Tracker" = "https://github.com/alchemine/comfyui-alchemine-pack/issues"
 
 [tool.comfy]
