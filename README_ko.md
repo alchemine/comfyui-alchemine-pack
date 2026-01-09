@@ -288,4 +288,4 @@ skip_if: girl
 
 ## 라이선스
 
-MIT License
+GPL-3.0 License
