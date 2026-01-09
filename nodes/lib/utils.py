@@ -2,9 +2,12 @@
 
 import re
 import json
+import asyncio
 import logging
 from pathlib import Path
 from functools import wraps
+
+import nest_asyncio
 
 
 #################################################################
@@ -192,3 +195,24 @@ class AnyType(str):
 
 
 any_typ = AnyType("*")
+
+
+#################################################################
+# Async utilities
+#################################################################
+def run_async(coro):
+    """Run async coroutine safely in any context.
+
+    Handles both:
+    - Sync context (no event loop): uses asyncio.run()
+    - Async context (running event loop): uses nest_asyncio to allow nested loops
+    """
+    try:
+        asyncio.get_running_loop()
+        # If we get here, there's a running loop - use nest_asyncio
+        nest_asyncio.apply()
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(coro)
+    except RuntimeError:
+        # No running loop - safe to use asyncio.run()
+        return asyncio.run(coro)

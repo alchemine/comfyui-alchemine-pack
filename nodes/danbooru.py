@@ -12,7 +12,7 @@ from os.path import exists, relpath, splitext
 import folder_paths
 from playwright.async_api import async_playwright
 
-from .lib.utils import get_logger
+from .lib.utils import get_logger, run_async
 
 
 logger = get_logger()
@@ -249,7 +249,7 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
         n_min_tags: int = 0,
         n_max_tags: int = 100,
     ) -> tuple[str]:
-        return asyncio.run(
+        return run_async(
             cls.aexecute(
                 text=text,
                 category=category,
@@ -355,7 +355,7 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
 
     @classmethod
     def execute(cls, post_id: str) -> tuple[str, str, str, str, str, str, str]:
-        return asyncio.run(cls.aexecute(post_id=post_id))
+        return run_async(cls.aexecute(post_id=post_id))
 
     @classmethod
     def IS_CHANGED(cls, post_id: str) -> str:
@@ -408,7 +408,7 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
         random: bool = True,
         seed: int = 0,
     ) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str]]:
-        return asyncio.run(
+        return run_async(
             cls.aexecute(date=date, scale=scale, n=n, random=random, seed=seed)
         )
 
@@ -543,7 +543,7 @@ class DanbooruPostsDownloader(BaseDanbooru):
         dir_path: str = "",
         prefix: str = "",
     ) -> tuple[list[str]]:
-        return asyncio.run(
+        return run_async(
             cls.aexecute(tags=tags, n=n, dir_path=dir_path, prefix=prefix)
         )
 
@@ -650,17 +650,17 @@ class DanbooruPostsDownloader(BaseDanbooru):
 
 
 if __name__ == "__main__":
-    # result = DanbooruRelatedTagsRetriever.execute(
+    # result = asyncio.run(DanbooruRelatedTagsRetriever.aexecute(
     #     text=r"ray \(arknights\), amiya \(arknights\)",
     #     threshold=0.3,
     #     category="General",
     #     order="Frequency",
     #     n_min_tags=10,
     #     n_max_tags=100,
-    # )
-    result = DanbooruPostTagsRetriever.execute(post_id="9557805")
-    # result = DanbooruPopularPostsTagsRetriever.execute(
+    # ))
+    result = asyncio.run(DanbooruPostTagsRetriever.aexecute(post_id="9557805"))
+    # result = asyncio.run(DanbooruPopularPostsTagsRetriever.aexecute(
     #     date="", scale="day", n=1, random=False, seed=0
-    # )
-    # result = DanbooruPostsDownloader.execute(tags="1girl solo", n=1, dir_path="output")
+    # ))
+    # result = asyncio.run(DanbooruPostsDownloader.aexecute(tags="1girl solo", n=1, dir_path="output"))
     print(result)
