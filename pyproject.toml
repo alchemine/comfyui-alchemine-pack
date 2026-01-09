@@ -1,16 +1,16 @@
 [project]
 name = "comfyui-alchemine-pack"
-description = """[a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png): Filter Tags, Filter Subtags, Replace Underscores, Token Analyzer, Auto Break, Substitute Tags, etc.
+description = """[a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png): Filter Tags, Filter Subtags, Replace Underscores, SDXL Token Analyzer, SDXL Auto Break, Substitute Tags, etc.
 [a/Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png): Post Tags Retriever, Related Tags Retriever, Popular Posts Tags Retriever, Posts Downloader
 [a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png): Gemini Inference, Ollama Inference, Text Editing Inference
-[a/Flow Control](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png), [a/Input](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Input.png): Signal Switch, Width Height
-"""
-version = "1.0.4"
+[a/Flow Control](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png), [a/Input](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Input.png): Signal Switch, Width Height"""
+version = "1.1.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
     "google-genai>=1.57.0",
     "playwright>=1.57.0",
+    "nest_asyncio>=1.6.0",
 ]
 
 [project.urls]

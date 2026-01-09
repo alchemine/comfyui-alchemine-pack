@@ -23,14 +23,14 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 
 | Node | Description |
 |------|-------------|
-| **ProcessTags** | Full pipeline for tag processing. Combines ReplaceUnderscores → FilterTags → FilterSubtags → AutoBreak in sequence. |
+| **ProcessTags** | Full pipeline for tag processing. Combines ReplaceUnderscores → FilterTags → FilterSubtags → SDXLAutoBreak in sequence. |
 | **FilterTags** | Removes blacklisted tags from prompts. Supports wildcards defined in `resources/wildcards.yaml`. |
 | **FilterSubtags** | Removes duplicate/unnecessary subtags (e.g., `dog, white dog` → `white dog`). |
 | **ReplaceUnderscores** | Converts all underscores (`_`) to spaces. |
 | **FixBreakAfterTIPO** | Fixes BREAK token formatting after TIPO output (removes weights like `(BREAK:-1)`). |
-| **TokenAnalyzer** | Analyzes CLIP tokens in a prompt. Returns g/l tokenizer results with token counts. |
+| **SDXLTokenAnalyzer** | Analyzes CLIP tokens in a prompt (SDXL only). Returns g/l tokenizer results with token counts. |
 | **RemoveWeights** | Removes all weight notations from tags (e.g., `(cat:1.2)` → `cat`). |
-| **AutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens. |
+| **SDXLAutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens (SDXL only). |
 | **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
 
 #### ProcessTags
