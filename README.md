@@ -9,7 +9,11 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
    ```bash
    pip install -r requirements.txt
    ```
-3. Restart ComfyUI.
+3. (Optional) For Danbooru nodes, install Playwright browsers:
+   ```bash
+   playwright install
+   ```
+4. Restart ComfyUI.
 
 ## Provided Nodes
 

@@ -9,7 +9,11 @@
    ```bash
    pip install -r requirements.txt
    ```
-3. ComfyUI를 재시작합니다.
+3. (선택) Danbooru 노드 사용 시 Playwright 브라우저 설치:
+   ```bash
+   playwright install
+   ```
+4. ComfyUI를 재시작합니다.
 
 ## 제공 노드
 
