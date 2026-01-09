@@ -6,7 +6,7 @@ description = """[[a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack
 [[a/Flow Control](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png)] Signal Switch
 [[a/Input](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Input.png)] Width Height
 """
-version = "1.0.0"
+version = "1.0.1"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
