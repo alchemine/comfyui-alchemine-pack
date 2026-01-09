@@ -9,6 +9,8 @@ import torch
 import requests
 import numpy as np
 from PIL import Image
+from google import genai
+from transformers import AutoTokenizer, T5ForConditionalGeneration
 
 from .lib.utils import get_logger, CONFIG
 
@@ -271,8 +273,6 @@ class GeminiInference(BaseInference):
     def get_client(
         gemini_api_key: str = "",
     ):
-        from google import genai
-
         if not gemini_api_key:
             try:
                 gemini_api_key = CONFIG["inference"]["gemini_api_key"]
@@ -541,8 +541,6 @@ class TextEditingInference(BaseInference):
         prompt: str = "When I grow up, I start to understand what he said is quite right.",
         seed: int = 0,
     ) -> tuple[str]:
-        from transformers import AutoTokenizer, T5ForConditionalGeneration
-
         # Set seed
         rng_state = torch.get_rng_state()
         torch.manual_seed(seed)

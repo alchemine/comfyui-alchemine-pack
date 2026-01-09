@@ -1,10 +1,18 @@
 [project]
 name = "comfyui-alchemine-pack"
-description = "Custom nodes pack for ComfyUI"
+description = """[[Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png)] Filter Tags, Filter Subtags, Replace Underscores, Token Analyzer, Auto Break, Substitute Tags, etc.
+[[Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png)] Post Tags Retriever, Related Tags Retriever, Popular Posts Tags Retriever, Posts Downloader
+[[Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png)] Gemini Inference, Ollama Inference, Text Editing Inference
+[[Flow Control](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png)] Signal Switch
+[[Input](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Input.png)] Width Height
+"""
 version = "1.0.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "google-genai>=1.57.0",
+    "playwright>=1.57.0",
+]
 
 [project.urls]
 Repository = "https://github.com/alchemine/comfyui-alchemine-pack"

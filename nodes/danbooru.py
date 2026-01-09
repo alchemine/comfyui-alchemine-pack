@@ -10,6 +10,7 @@ from collections import defaultdict
 from os.path import exists, relpath, splitext
 
 import folder_paths
+from playwright.async_api import async_playwright
 
 from .lib.utils import get_logger
 
@@ -213,8 +214,6 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
         cls, queries: list[str], category: str, order: str
     ) -> list[dict]:
         """Request Danbooru API."""
-        from playwright.async_api import async_playwright
-
         base_url = "https://danbooru.donmai.us/related_tag.json?commit=Search&search[category]={category}&search[order]={order}&search[query]={query}"
 
         responses = []
@@ -312,8 +311,6 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
 
     @classmethod
     async def aexecute(cls, post_id: str) -> tuple[str, str, str, str, str, str, str]:
-        from playwright.async_api import async_playwright
-
         url = f"https://danbooru.donmai.us/posts/{post_id}.json"
         if url not in cls.REQUEST_CACHE:
             async with async_playwright() as p:
@@ -467,8 +464,6 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
     @classmethod
     async def arequest(cls, date: str, scale: str, n: int, random: bool) -> list[dict]:
         """Request Danbooru API."""
-        from playwright.async_api import async_playwright
-
         params = {}
         if date:
             params["date"] = date
@@ -560,8 +555,6 @@ class DanbooruPostsDownloader(BaseDanbooru):
         dir_path: str = "",
         prefix: str = "",
     ) -> tuple[list[str]]:
-        from playwright.async_api import async_playwright
-
         # Set default values
         output_dir = Path(folder_paths.get_output_directory())
         dir_path_obj = output_dir / dir_path
@@ -619,8 +612,6 @@ class DanbooruPostsDownloader(BaseDanbooru):
     @classmethod
     async def arequest(cls, tags: str, n: int) -> list[dict]:
         """Request Danbooru API."""
-        from playwright.async_api import async_playwright
-
         params = {}
         params["tags"] = tags
 
