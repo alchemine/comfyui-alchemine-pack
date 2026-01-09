@@ -1,12 +1,11 @@
 [project]
 name = "comfyui-alchemine-pack"
-description = """[[a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png)] Filter Tags, Filter Subtags, Replace Underscores, Token Analyzer, Auto Break, Substitute Tags, etc.
-[[a/Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png)] Post Tags Retriever, Related Tags Retriever, Popular Posts Tags Retriever, Posts Downloader
-[[a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png)] Gemini Inference, Ollama Inference, Text Editing Inference
-[[a/Flow Control](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png)] Signal Switch
-[[a/Input](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Input.png)] Width Height
+description = """[a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png): Filter Tags, Filter Subtags, Replace Underscores, Token Analyzer, Auto Break, Substitute Tags, etc.
+[a/Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png): Post Tags Retriever, Related Tags Retriever, Popular Posts Tags Retriever, Posts Downloader
+[a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png): Gemini Inference, Ollama Inference, Text Editing Inference
+[a/Flow Control](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png), [a/Input](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Input.png): Signal Switch, Width Height
 """
-version = "1.0.2"
+version = "1.0.4"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
