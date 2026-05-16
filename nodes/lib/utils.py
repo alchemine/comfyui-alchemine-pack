@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from functools import wraps
 
-import nest_asyncio
+from dotenv import load_dotenv
 
 
 #################################################################
@@ -15,6 +15,7 @@ import nest_asyncio
 #################################################################
 ROOT_DIR = Path(__file__).parent.parent.parent
 CUSTOM_NODES_DIR = ROOT_DIR.parent
+load_dotenv(ROOT_DIR / ".env")
 with open(ROOT_DIR / "config.json", "r") as f:
     CONFIG = json.load(f)
 RESOURCES_DIR = ROOT_DIR / "resources"
@@ -200,19 +201,21 @@ any_typ = AnyType("*")
 #################################################################
 # Async utilities
 #################################################################
-def run_async(coro):
-    """Run async coroutine safely in any context.
+# import nest_asyncio
 
-    Handles both:
-    - Sync context (no event loop): uses asyncio.run()
-    - Async context (running event loop): uses nest_asyncio to allow nested loops
-    """
-    try:
-        asyncio.get_running_loop()
-        # If we get here, there's a running loop - use nest_asyncio
-        nest_asyncio.apply()
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(coro)
-    except RuntimeError:
-        # No running loop - safe to use asyncio.run()
-        return asyncio.run(coro)
+# def run_async(coro):
+#     """Run async coroutine safely in any context.
+
+#     Handles both:
+#     - Sync context (no event loop): uses asyncio.run()
+#     - Async context (running event loop): uses nest_asyncio to allow nested loops
+#     """
+#     try:
+#         asyncio.get_running_loop()
+#         # If we get here, there's a running loop - use nest_asyncio
+#         nest_asyncio.apply()
+#         loop = asyncio.get_event_loop()
+#         return loop.run_until_complete(coro)
+#     except RuntimeError:
+#         # No running loop - safe to use asyncio.run()
+#         return asyncio.run(coro)

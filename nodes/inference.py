@@ -334,6 +334,188 @@ class GeminiInference(BaseInference):
         }
 
 
+class OpenAIInference(BaseInference):
+    """Inference with OpenAI-compatible API.
+
+    Args:
+        system_instruction (str): System instruction.
+        prompt (str): Prompt.
+        base_url (str): API base URL (e.g. https://api.openai.com/v1). Must be set in the `custom_nodes/comfyui-alchemine-pack/config.json` file.
+        api_key (str): API key. Must be set in the `custom_nodes/comfyui-alchemine-pack/config.json` file.
+        model (str | None): Model name (e.g. gpt-4o, gpt-4o-mini). If None, auto-detected from /models endpoint (uses the model if only one is available).
+        max_output_tokens (int): Maximum output tokens.
+        seed (int): Seed.
+        think (bool): Whether to use thinking mode.
+        image (list[torch.Tensor] | None): Image tensor.
+            Must be a 4D tensor in the shape of [B, H, W, C].
+
+    Returns:
+        tuple[str]: Response.
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "prompt": (
+                "STRING",
+                {
+                    "default": "Hello, world!",
+                    "multiline": True,
+                    "placeholder": "Prompt Text",
+                    "dynamicPrompts": True,
+                },
+            ),
+            "system_instruction": (
+                "STRING",
+                {
+                    "default": "You are a helpful assistant.",
+                    "multiline": True,
+                    "placeholder": "Prompt Text",
+                    "dynamicPrompts": True,
+                },
+            ),
+            "base_url": ("STRING", {"default": ""}),
+            "api_key": ("STRING", {"default": ""}),
+            "model": ("STRING", {"default": ""}),
+            "max_output_tokens": ("INT", {"default": 100, "min": 1}),
+            "seed": ("INT", {"default": 0, "min": 0}),
+            "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.1}),
+            "think": ("BOOLEAN", {"default": False}),
+        },
+        "optional": {
+            "image": ("IMAGE", {"default": None}),
+        },
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("response",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Inference"
+
+    @classmethod
+    def execute(
+        cls,
+        prompt: str = "Hello, world!",
+        system_instruction: str = "You are a helpful assistant.",
+        image: list[torch.Tensor] | None = None,
+        base_url: str = "",
+        api_key: str = "",
+        model: str = "",
+        max_output_tokens: int = 100,
+        seed: int = 0,
+        temperature: float = 0.7,
+        think: bool = False,
+    ) -> tuple[str]:
+        # Resolve config
+        base_url = base_url or CONFIG["inference"]["openai_base_url"]
+        api_key = api_key or CONFIG["inference"]["openai_api_key"]
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+        # Auto-detect model from /models endpoint if not specified
+        if not model:
+            model = cls._get_model(base_url, headers)
+
+        # Build user message content
+        if image is not None:
+            image_b64 = cls.encode_image(image)
+            user_content = [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                },
+                {"type": "text", "text": prompt},
+            ]
+        else:
+            user_content = prompt
+
+        # Caching request
+        cache_key = (
+            str(user_content),
+            system_instruction,
+            base_url,
+            api_key,
+            model,
+            max_output_tokens,
+            seed,
+            temperature,
+            think,
+        )
+        if cache_key in cls.REQUEST_CACHE:
+            return (cls.REQUEST_CACHE[cache_key],)
+
+        # Generate response
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_content},
+            ],
+            "max_tokens": max_output_tokens,
+            "seed": seed,
+            "temperature": temperature,
+            "chat_template_kwargs": {"enable_thinking": think},
+        }
+        response = requests.post(
+            f"{base_url.rstrip('/')}/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        result = response.json()["choices"][0]["message"]["content"]
+
+        cls._set_cache(cache_key, result)
+        return (result,)
+
+    @staticmethod
+    def _get_model(base_url: str, headers: dict) -> str:
+        """Auto-detect model from /models endpoint.
+
+        If only one model is available, use it.
+        Otherwise, raise an error with available models.
+        """
+        response = requests.get(
+            f"{base_url.rstrip('/')}/models",
+            headers=headers,
+        )
+        response.raise_for_status()
+        models = [m["id"] for m in response.json()["data"]]
+        if len(models) == 1:
+            logger.info(f"Auto-detected model: {models[0]}")
+            return models[0]
+        msg = f"Multiple models available: {models}. Please specify one in the 'model' field."
+        logger.error(msg)
+        raise ValueError(msg)
+
+    @classmethod
+    def IS_CHANGED(
+        cls,
+        prompt: str = "Hello, world!",
+        system_instruction: str = "You are a helpful assistant.",
+        image: list[torch.Tensor] | None = None,
+        base_url: str = "",
+        api_key: str = "",
+        model: str = "",
+        max_output_tokens: int = 100,
+        seed: int = 0,
+        temperature: float = 0.7,
+        think: bool = False,
+    ) -> tuple:
+        return (
+            prompt,
+            system_instruction,
+            image,
+            base_url,
+            api_key,
+            model,
+            max_output_tokens,
+            seed,
+            temperature,
+            think,
+        )
+
+
+
 class OllamaInference(BaseInference):
     """Inference with Ollama API.
 

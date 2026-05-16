@@ -3,6 +3,7 @@
 import os
 import re
 import asyncio
+from os import environ
 from math import ceil
 from pathlib import Path
 from random import Random
@@ -25,6 +26,24 @@ class BaseDanbooru:
     """Base class for Danbooru nodes."""
 
     REQUEST_CACHE = {}
+
+    @classmethod
+    def get_proxy_config(cls) -> dict | None:
+        """Return Playwright proxy config from env, or None if not set.
+
+        Why: Webshare rotating proxy avoids Danbooru rate-limits / IP bans.
+        Reads WEBSHARE_PROXY_USERNAME / WEBSHARE_PROXY_PASSWORD from .env;
+        WEBSHARE_PROXY_SERVER is optional (defaults to Webshare rotating endpoint).
+        """
+        username = environ.get("WEBSHARE_PROXY_USERNAME")
+        password = environ.get("WEBSHARE_PROXY_PASSWORD")
+        if not username or not password:
+            return None
+        return {
+            "server": environ.get("WEBSHARE_PROXY_SERVER", "http://p.webshare.io:80"),
+            "username": username,
+            "password": password,
+        }
 
     @staticmethod
     def normalize_tag(tag: str) -> str:
@@ -218,7 +237,7 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
 
         responses = []
         async with async_playwright() as p:
-            api_context = await p.request.new_context()
+            api_context = await p.request.new_context(proxy=cls.get_proxy_config())
             for query in queries:
                 url = base_url.format(category=category, order=order, query=query)
                 if url in cls.REQUEST_CACHE:
@@ -314,7 +333,7 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
         url = f"https://danbooru.donmai.us/posts/{post_id}.json"
         if url not in cls.REQUEST_CACHE:
             async with async_playwright() as p:
-                api_context = await p.request.new_context()
+                api_context = await p.request.new_context(proxy=cls.get_proxy_config())
                 resp = await api_context.get(url)
                 if not resp.ok:
                     text = await resp.text()
@@ -472,7 +491,7 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
 
         datas = []
         async with async_playwright() as p:
-            api_context = await p.request.new_context()
+            api_context = await p.request.new_context(proxy=cls.get_proxy_config())
             if random:
                 n_pages = n
             else:
@@ -577,7 +596,7 @@ class DanbooruPostsDownloader(BaseDanbooru):
         idx = start_idx
 
         async with async_playwright() as p:
-            api_context = await p.request.new_context()
+            api_context = await p.request.new_context(proxy=cls.get_proxy_config())
 
             file_paths = []
             for data in datas:
@@ -619,7 +638,7 @@ class DanbooruPostsDownloader(BaseDanbooru):
 
         datas = []
         async with async_playwright() as p:
-            api_context = await p.request.new_context()
+            api_context = await p.request.new_context(proxy=cls.get_proxy_config())
             for page in range(1, 1 + n_pages):
                 params["page"] = page
                 params_str = "&".join([f"{k}={v}" for k, v in params.items()])
