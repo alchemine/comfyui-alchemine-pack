@@ -32,6 +32,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **RemoveWeights** | Removes all weight notations from tags (e.g., `(cat:1.2)` → `cat`). |
 | **SDXLAutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens (SDXL only). |
 | **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
+| **SeparateLoraTags** | Separates lora tags (`<lora:...>`) from a prompt. If the same lora appears multiple times, the last weight is used. |
 
 #### ProcessTags
 
@@ -63,6 +64,17 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | `repl` | STRING | "" | Replacement string |
 | `run_if` | STRING | "" | Only run if this pattern exists |
 | `skip_if` | STRING | "" | Skip if this pattern exists |
+
+#### SeparateLoraTags
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+
+| Output | Description |
+|--------|-------------|
+| `text_without_lora` | Text with all lora tags removed (whitespace/newlines preserved as much as possible) |
+| `text_with_lora` | Deduplicated lora tags joined by spaces (when the same lora appears multiple times, the last weight wins) |
 
 ---
 
@@ -276,6 +288,22 @@ Input: dog, cat, white dog, black cat
 Output: white dog, black cat
 (Removes 'dog' and 'cat' as they are subtags of 'white dog' and 'black cat')
 ```
+
+### SeparateLoraTags Example
+
+```
+Input:
+moriaruruka, <lora:characters\lulurka\1-moriaruruka.safetensors:0.7> blonde, gradient hair, jewelry,
+<lora:characters\lulurka\2-moriaruruka.safetensors:0.7> <lora:characters\lulurka\3-moriaruruka.safetensors:0.7> <lora:characters\lulurka\3-moriaruruka.safetensors:1.0>
+
+Output:
+text_without_lora: moriaruruka, blonde, gradient hair, jewelry
+text_with_lora: <lora:characters\lulurka\1-moriaruruka.safetensors:0.7> <lora:characters\lulurka\2-moriaruruka.safetensors:0.7> <lora:characters\lulurka\3-moriaruruka.safetensors:1.0>
+```
+
+- When a lora block is followed by `,`, the preceding comma/whitespace is also removed to avoid double commas.
+- When a lora block is not followed by `,`, the preceding comma is preserved and only the preceding whitespace is removed.
+- When the same lora appears multiple times, the last specified weight wins (e.g., the final weight for `3-moriaruruka.safetensors` above is `1.0`).
 
 ### SubstituteTags Example
 

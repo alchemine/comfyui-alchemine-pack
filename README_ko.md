@@ -32,6 +32,7 @@
 | **RemoveWeights** | 모든 가중치 표기를 제거합니다 (예: `(cat:1.2)` → `cat`). |
 | **SDXLAutoBreak** | 각 세그먼트가 75토큰 이내가 되도록 자동으로 BREAK를 삽입합니다 (SDXL 전용). |
 | **SubstituteTags** | 정규식 기반 태그 치환. 조건부 실행(`run_if`, `skip_if`) 지원. |
+| **SeparateLoraTags** | 프롬프트에서 lora 태그(`<lora:...>`)를 분리합니다. 동일한 lora가 여러 번 등장하면 마지막 가중치를 사용합니다. |
 
 #### ProcessTags
 
@@ -63,6 +64,17 @@
 | `repl` | STRING | "" | 대체 문자열 |
 | `run_if` | STRING | "" | 이 패턴이 있을 때만 실행 |
 | `skip_if` | STRING | "" | 이 패턴이 있으면 건너뜀 |
+
+#### SeparateLoraTags
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+
+| 출력 | 설명 |
+|------|------|
+| `text_without_lora` | lora 태그가 제거된 텍스트 (원본 공백/줄바꿈 최대한 유지) |
+| `text_with_lora` | 중복 제거된 lora 태그들을 공백으로 join한 문자열 (동일 lora는 마지막 가중치 사용) |
 
 ---
 
@@ -285,6 +297,22 @@ pattern: 1boy
 repl: 1girl, 1boy
 skip_if: girl
 ```
+
+### SeparateLoraTags 예시
+
+```
+입력:
+moriaruruka, <lora:characters\lulurka\1-moriaruruka.safetensors:0.7> blonde, gradient hair, jewelry,
+<lora:characters\lulurka\2-moriaruruka.safetensors:0.7> <lora:characters\lulurka\3-moriaruruka.safetensors:0.7> <lora:characters\lulurka\3-moriaruruka.safetensors:1.0>
+
+출력:
+text_without_lora: moriaruruka, blonde, gradient hair, jewelry
+text_with_lora: <lora:characters\lulurka\1-moriaruruka.safetensors:0.7> <lora:characters\lulurka\2-moriaruruka.safetensors:0.7> <lora:characters\lulurka\3-moriaruruka.safetensors:1.0>
+```
+
+- lora 블록 뒤에 `,`가 따라오면 앞쪽 콤마/공백까지 함께 제거하여 이중 콤마를 방지합니다.
+- lora 블록 뒤에 `,`가 없으면 앞쪽 콤마는 보존하고 선행 공백만 제거합니다.
+- 동일한 lora가 여러 번 등장하면 마지막에 지정된 가중치를 사용합니다 (예: 위 예시에서 `3-moriaruruka.safetensors`의 최종 가중치는 `1.0`).
 
 ## 라이선스
 

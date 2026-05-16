@@ -896,6 +896,76 @@ class SubstituteTags(BasePrompt):
         return (text, pattern, repl, run_if, skip_if)
 
 
+class SeparateLoraTags(BasePrompt):
+    """Separate lora tags from a prompt.
+
+    - text_without_lora: input text with all lora tags removed (whitespace preserved as much as possible)
+    - text_with_lora: deduplicated lora tags joined by space; if the same lora appears
+      multiple times, the last weight wins; original order is preserved
+
+    Examples:
+        Input:
+            "1girl, <lora:a.safetensors:0.7> blonde, jewelry,
+            <lora:b.safetensors:0.7> <lora:c.safetensors:0.7> <lora:c.safetensors:1.0>"
+        Output:
+            text_without_lora: "1girl, blonde, jewelry"
+            text_with_lora: "<lora:a.safetensors:0.7> <lora:b.safetensors:0.7> <lora:c.safetensors:1.0>"
+    """
+
+    LORA_PATTERN = re.compile(r"<lora:([^>]+)>")
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("text_without_lora", "text_with_lora")
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    def execute(cls, text: str) -> tuple[str, str]:
+        """Separate lora tags from a prompt."""
+        # 1. Build text_with_lora: dedupe by lora name, keep last weight, preserve first-seen order
+        ordered_names: list[str] = []
+        weights: dict[str, str] = {}
+        for inner in cls.LORA_PATTERN.findall(text):
+            name, _, weight = inner.rpartition(":")
+            if not name:
+                name, weight = inner, ""
+            if name not in weights:
+                ordered_names.append(name)
+            weights[name] = weight
+        text_with_lora = " ".join(
+            f"<lora:{name}:{weights[name]}>" if weights[name] else f"<lora:{name}>"
+            for name in ordered_names
+        )
+
+        # 2. Build text_without_lora using a conditional block rule:
+        #    - If a lora block is followed by ',', that trailing comma serves as the separator,
+        #      so the preceding "[,\s]*" is consumed along with the lora block.
+        #    - Otherwise, only the preceding whitespace is consumed so the preceding comma
+        #      can serve as the separator. Trailing whitespace after the block is preserved
+        #      in both cases to keep the original spacing intact.
+        text_without_lora = re.sub(
+            r"[,\s]*<lora:[^>]+>(?:\s+<lora:[^>]+>)*(?=,)", "", text
+        )
+        text_without_lora = re.sub(
+            r"\s*<lora:[^>]+>(?:\s+<lora:[^>]+>)*", "", text_without_lora
+        )
+        text_without_lora = text_without_lora.strip()
+        text_without_lora = re.sub(r"^,\s*", "", text_without_lora)
+        text_without_lora = re.sub(r",\s*$", "", text_without_lora)
+
+        return (text_without_lora, text_with_lora)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
+
+
 if __name__ == "__main__":
     text = "(drunk, beer), full-face blush"
     text = "(happy, drunk, :3), (drunk, beer), full-face blush"
