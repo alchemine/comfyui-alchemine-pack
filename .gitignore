@@ -3,3 +3,4 @@ __pycache__/
 .vscode/
 playground/
 .env
+.claude/
