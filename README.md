@@ -55,6 +55,40 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | `blacklist_tags` | STRING | "" | Comma-separated blacklist (supports wildcards) |
 | `fixed_tags` | STRING | "" | Tags to preserve regardless of filtering |
 
+#### FilterSubtags
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+| `fixed_tags` | STRING | "" | Tags to preserve regardless of subtag filtering |
+
+#### SDXLTokenAnalyzer
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `clip` | CLIP | (required) | CLIP model (must expose `clip_g` / `clip_l`) |
+| `text` | STRING | (required) | Input prompt text |
+
+| Output | Description |
+|--------|-------------|
+| `g_tokens` | Tokens decoded by `clip_g` (segments separated by BREAK) |
+| `g_token_count` | Per-segment `clip_g` token counts, comma-separated |
+| `l_tokens` | Tokens decoded by `clip_l` |
+| `l_token_count` | Per-segment `clip_l` token counts, comma-separated |
+
+#### SDXLAutoBreak
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `clip` | CLIP | (required) | CLIP model (uses `clip_g` token count) |
+| `text` | STRING | (required) | Input prompt text |
+
+#### ReplaceUnderscores / FixBreakAfterTIPO / RemoveWeights
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+
 #### SubstituteTags
 
 | Parameter | Type | Default | Description |
@@ -78,7 +112,10 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 
 ---
 
-### Danbooru Nodes (`AlcheminePack/Danbooru`)
+### Danbooru Nodes (`AlcheminePack/Danbooru`) *(Disabled by default)*
+
+> ℹ️ The Danbooru nodes are present in the source tree but currently **not registered** in `__init__.py`. To enable them, uncomment the relevant imports and entries in `__init__.py`, then run `playwright install`.
+
 
 ![Danbooru Workflow](workflows/comfyui-alchemine-pack-workflow-Danbooru.png)
 
@@ -139,7 +176,10 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 
 ---
 
-### Inference Nodes (`AlcheminePack/Inference`)
+### Inference Nodes (`AlcheminePack/Inference`) *(Disabled by default)*
+
+> ℹ️ The Inference nodes are present in the source tree but currently **not registered** in `__init__.py`. To enable them, uncomment the relevant imports and entries in `__init__.py`.
+
 
 ![Inference Workflow](workflows/comfyui-alchemine-pack-workflow-Inference.png)
 
@@ -202,6 +242,7 @@ Available predefined instructions:
 | Node | Description |
 |------|-------------|
 | **Width Height** | Configurable width/height with swap and scale options. |
+| **Evaluate** | Runs user-defined Python code against an input string and returns the transformed result. Useful for ad-hoc tag manipulation inside a workflow. |
 
 #### Width Height
 
@@ -211,6 +252,27 @@ Available predefined instructions:
 | `height` | INT | 512 | Height value |
 | `swap` | BOOLEAN | False | Swap width and height |
 | `scale` | FLOAT | 1.0 | Scale multiplier |
+
+#### Evaluate
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `tag` | STRING | (required) | Input string passed to `main(tag)` |
+| `code` | STRING (multiline) | sort-tags snippet | Python source that must define `def main(tag: str) -> str` |
+
+| Output | Description |
+|--------|-------------|
+| `tag` | The string returned by `main(tag)` |
+
+The default code sorts comma-separated tags alphabetically:
+
+```python
+def main(tag: str) -> str:
+    tags = [t.strip() for t in tag.split(",") if t.strip()]
+    return ", ".join(sorted(tags))
+```
+
+> ⚠️ **Security note:** `Evaluate` executes arbitrary Python via `exec()`. Only use it with code you trust.
 
 ---
 
@@ -237,8 +299,26 @@ Available predefined instructions:
 
 | Node | Description |
 |------|-------------|
-| **AsyncSaveImage** | Saves images asynchronously using threading. |
-| **PreviewLatestImage** | Loads the latest image from output directory. |
+| **AsyncSaveImage** | Saves images asynchronously using a background thread (non-blocking). |
+| **PreviewLatestImage** | Loads the most recently created image (by ctime) under `output/<filename_prefix>`. |
+
+#### AsyncSaveImage
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `images` | IMAGE | (required) | Images to save |
+| `filename_prefix` | STRING | "ComfyUI" | Filename prefix (supports `%date:...%`, node-value placeholders) |
+
+#### PreviewLatestImage
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `filename_prefix` | STRING | "ComfyUI" | Subfolder / filename prefix under the ComfyUI output directory to scan |
+
+| Output | Description |
+|--------|-------------|
+| `IMAGE` | The most recently created image |
+| `MASK` | Alpha channel as mask (zero mask if no alpha) |
 
 ---
 
@@ -246,8 +326,34 @@ Available predefined instructions:
 
 | Node | Description |
 |------|-------------|
-| **DownloadImage** | Downloads an image from URL. |
-| **SaveImageWithText** | Saves image with accompanying text file (for training datasets). |
+| **DownloadImage** | Downloads an image from a URL into the ComfyUI output directory. |
+| **SaveImageWithText** | Saves an image alongside a `.txt` caption file (for LoRA training dataset preparation). |
+
+#### DownloadImage
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | STRING | (required) | Image URL to download |
+| `dir_path` | STRING | "output/images" | Destination directory (relative to ComfyUI output) |
+
+| Output | Description |
+|--------|-------------|
+| `image` | Loaded image tensor |
+| `file_path` | Path of the saved file (relative to output dir) |
+
+#### SaveImageWithText
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `image` | IMAGE | (required) | Image to save |
+| `text` | STRING | (required) | Caption text saved as a sibling `.txt` |
+| `dir_path` | STRING | (required) | Destination directory (relative to ComfyUI output) |
+| `prefix` | STRING | "" | Filename prefix; auto-increments index when set |
+
+| Output | Description |
+|--------|-------------|
+| `image_path` | Path of the saved `.png` |
+| `text_path` | Path of the saved `.txt` |
 
 ---
 

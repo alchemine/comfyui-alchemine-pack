@@ -55,6 +55,40 @@
 | `blacklist_tags` | STRING | "" | 쉼표로 구분된 블랙리스트 (와일드카드 지원) |
 | `fixed_tags` | STRING | "" | 필터링에 관계없이 보존할 태그 |
 
+#### FilterSubtags
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+| `fixed_tags` | STRING | "" | 서브태그 필터링에서도 보존할 태그 |
+
+#### SDXLTokenAnalyzer
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `clip` | CLIP | (필수) | `clip_g` / `clip_l`를 모두 포함하는 CLIP 모델 |
+| `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+
+| 출력 | 설명 |
+|------|------|
+| `g_tokens` | `clip_g` 토크나이저 결과 (BREAK 기준 세그먼트 분리) |
+| `g_token_count` | 세그먼트별 `clip_g` 토큰 수 (쉼표 구분) |
+| `l_tokens` | `clip_l` 토크나이저 결과 |
+| `l_token_count` | 세그먼트별 `clip_l` 토큰 수 (쉼표 구분) |
+
+#### SDXLAutoBreak
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `clip` | CLIP | (필수) | CLIP 모델 (`clip_g` 토큰 수 기준) |
+| `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+
+#### ReplaceUnderscores / FixBreakAfterTIPO / RemoveWeights
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+
 #### SubstituteTags
 
 | 파라미터 | 타입 | 기본값 | 설명 |
@@ -78,7 +112,10 @@
 
 ---
 
-### Danbooru 노드 (`AlcheminePack/Danbooru`)
+### Danbooru 노드 (`AlcheminePack/Danbooru`) *(기본 비활성화)*
+
+> ℹ️ Danbooru 노드는 소스에는 포함되어 있지만 현재 `__init__.py`에서 **등록되어 있지 않습니다**. 사용하려면 `__init__.py`의 관련 import/매핑 주석을 해제한 뒤 `playwright install`을 실행하세요.
+
 
 ![Danbooru Workflow](workflows/comfyui-alchemine-pack-workflow-Danbooru.png)
 
@@ -139,7 +176,10 @@
 
 ---
 
-### 추론 노드 (`AlcheminePack/Inference`)
+### 추론 노드 (`AlcheminePack/Inference`) *(기본 비활성화)*
+
+> ℹ️ Inference 노드는 소스에는 포함되어 있지만 현재 `__init__.py`에서 **등록되어 있지 않습니다**. 사용하려면 `__init__.py`의 관련 import/매핑 주석을 해제하세요.
+
 
 ![Inference Workflow](workflows/comfyui-alchemine-pack-workflow-Inference.png)
 
@@ -202,6 +242,7 @@
 | 노드 | 설명 |
 |------|------|
 | **Width Height** | 스왑과 스케일 옵션이 있는 너비/높이 설정 노드. |
+| **Evaluate** | 사용자 정의 Python 코드를 입력 문자열에 적용해 변환된 결과를 반환합니다. 워크플로우 내 즉석 태그 가공에 유용합니다. |
 
 #### Width Height
 
@@ -211,6 +252,27 @@
 | `height` | INT | 512 | 높이 값 |
 | `swap` | BOOLEAN | False | 너비와 높이 교환 |
 | `scale` | FLOAT | 1.0 | 스케일 배율 |
+
+#### Evaluate
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `tag` | STRING | (필수) | `main(tag)`에 전달될 입력 문자열 |
+| `code` | STRING (multiline) | 태그 정렬 스니펫 | `def main(tag: str) -> str`을 정의해야 하는 Python 코드 |
+
+| 출력 | 설명 |
+|------|------|
+| `tag` | `main(tag)`의 반환값 |
+
+기본 코드는 쉼표로 구분된 태그를 알파벳순으로 정렬합니다:
+
+```python
+def main(tag: str) -> str:
+    tags = [t.strip() for t in tag.split(",") if t.strip()]
+    return ", ".join(sorted(tags))
+```
+
+> ⚠️ **보안 주의:** `Evaluate`는 `exec()`로 임의의 Python 코드를 실행합니다. 신뢰할 수 있는 코드만 사용하세요.
 
 ---
 
@@ -237,8 +299,26 @@
 
 | 노드 | 설명 |
 |------|------|
-| **AsyncSaveImage** | 스레딩을 사용하여 비동기적으로 이미지를 저장합니다. |
-| **PreviewLatestImage** | 출력 디렉터리에서 최신 이미지를 로드합니다. |
+| **AsyncSaveImage** | 백그라운드 스레드로 이미지를 비동기 저장합니다 (논블로킹). |
+| **PreviewLatestImage** | `output/<filename_prefix>` 아래에서 가장 최근(ctime 기준)에 생성된 이미지를 로드합니다. |
+
+#### AsyncSaveImage
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `images` | IMAGE | (필수) | 저장할 이미지 |
+| `filename_prefix` | STRING | "ComfyUI" | 파일명 접두사 (`%date:...%`, 노드 값 placeholder 지원) |
+
+#### PreviewLatestImage
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `filename_prefix` | STRING | "ComfyUI" | ComfyUI output 디렉터리에서 스캔할 하위 폴더/접두사 |
+
+| 출력 | 설명 |
+|------|------|
+| `IMAGE` | 가장 최근 이미지 |
+| `MASK` | 알파 채널 마스크 (알파 없으면 0 마스크) |
 
 ---
 
@@ -246,8 +326,34 @@
 
 | 노드 | 설명 |
 |------|------|
-| **DownloadImage** | URL에서 이미지를 다운로드합니다. |
-| **SaveImageWithText** | 이미지와 텍스트 파일을 함께 저장합니다 (학습 데이터셋용). |
+| **DownloadImage** | URL의 이미지를 ComfyUI output 디렉터리로 다운로드합니다. |
+| **SaveImageWithText** | 이미지와 `.txt` 캡션 파일을 함께 저장합니다 (LoRA 학습 데이터셋 준비용). |
+
+#### DownloadImage
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `url` | STRING | (필수) | 다운로드할 이미지 URL |
+| `dir_path` | STRING | "output/images" | 저장 디렉터리 (ComfyUI output 기준 상대 경로) |
+
+| 출력 | 설명 |
+|------|------|
+| `image` | 로드된 이미지 텐서 |
+| `file_path` | 저장된 파일 경로 (output 기준 상대 경로) |
+
+#### SaveImageWithText
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `image` | IMAGE | (필수) | 저장할 이미지 |
+| `text` | STRING | (필수) | 동일 이름의 `.txt`로 저장될 캡션 |
+| `dir_path` | STRING | (필수) | 저장 디렉터리 (ComfyUI output 기준 상대 경로) |
+| `prefix` | STRING | "" | 파일명 접두사 (설정 시 자동 인덱스 부여) |
+
+| 출력 | 설명 |
+|------|------|
+| `image_path` | 저장된 `.png` 경로 |
+| `text_path` | 저장된 `.txt` 경로 |
 
 ---
 
