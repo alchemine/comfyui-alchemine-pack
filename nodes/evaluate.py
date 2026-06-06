@@ -1,4 +1,4 @@
-"""Nodes in AlcheminePack/Input."""
+"""Nodes in AlcheminePack/Evaluate."""
 
 from .lib.utils import exception_handler
 
@@ -6,8 +6,8 @@ from .lib.utils import exception_handler
 #################################################################
 # Base class
 #################################################################
-class BaseInput:
-    """Base class for Input nodes."""
+class BaseEvaluate:
+    """Base class for Evaluate nodes."""
 
     ...
 
@@ -15,39 +15,13 @@ class BaseInput:
 #################################################################
 # Nodes
 #################################################################
-class WidthHeight(BaseInput):
-    """Get width and height."""
-
-    INPUT_TYPES = lambda: {
-        "required": {
-            "width": ("INT", {"default": 512, "min": 1}),
-            "height": ("INT", {"default": 512, "min": 1}),
-            "swap": ("BOOLEAN", {"default": False}),
-            "scale": ("FLOAT", {"default": 1.0, "min": 0.0}),
-        }
-    }
-    RETURN_TYPES = ("INT", "INT")
-    RETURN_NAMES = ("width", "height")
-    FUNCTION = "execute"
-    CATEGORY = "AlcheminePack/Input"
-
-    @classmethod
-    def execute(
-        cls, width: int = 512, height: int = 512, swap: bool = False, scale: float = 1.0
-    ) -> tuple[int, int]:
-        width, height = int(width * scale), int(height * scale)
-        if swap:
-            width, height = height, width
-        return width, height
-
-
 _DEFAULT_EVALUATE_CODE = """def main(tag: str) -> str:
     tags = [t.strip() for t in tag.split(",") if t.strip()]
     return ", ".join(sorted(tags))
 """
 
 
-class Evaluate(BaseInput):
+class Evaluate(BaseEvaluate):
     """Run user Python code defining main(tag: str) -> str."""
 
     INPUT_TYPES = lambda: {
@@ -66,7 +40,7 @@ class Evaluate(BaseInput):
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("tag",)
     FUNCTION = "execute"
-    CATEGORY = "AlcheminePack/Input"
+    CATEGORY = "AlcheminePack/Evaluate"
 
     @classmethod
     @exception_handler

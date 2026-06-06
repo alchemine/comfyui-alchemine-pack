@@ -1,6 +1,6 @@
 # ComfyUI-Alchemine-Pack
 
-A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, Danbooru integration, LLM inference, and workflow control.
+A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, Danbooru integration, LLM inference, LoRA-tag loading, Grok image-to-video, remote ComfyUI API execution, and workflow control.
 
 ## Installation
 
@@ -9,11 +9,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
    ```bash
    pip install -r requirements.txt
    ```
-3. (Optional) For Danbooru nodes, install Playwright browsers:
-   ```bash
-   playwright install
-   ```
-4. Restart ComfyUI.
+3. Restart ComfyUI.
 
 ## Provided Nodes
 
@@ -47,6 +43,11 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | `blacklist_tags` | STRING | "" | Comma-separated blacklist (supports wildcards) |
 | `fixed_tags` | STRING | "" | Tags to preserve regardless of filtering |
 
+| Output | Description |
+|--------|-------------|
+| `processed_text` | The processed prompt text |
+| `filtered_tags_list` | List of removed-tag groups (one entry each from the FilterTags / FilterSubtags steps) |
+
 #### FilterTags
 
 | Parameter | Type | Default | Description |
@@ -55,12 +56,22 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | `blacklist_tags` | STRING | "" | Comma-separated blacklist (supports wildcards) |
 | `fixed_tags` | STRING | "" | Tags to preserve regardless of filtering |
 
+| Output | Description |
+|--------|-------------|
+| `processed_text` | Prompt with blacklisted tags removed |
+| `filtered_tags` | Comma-separated list of the removed tags |
+
 #### FilterSubtags
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `text` | STRING | (required) | Input prompt text |
 | `fixed_tags` | STRING | "" | Tags to preserve regardless of subtag filtering |
+
+| Output | Description |
+|--------|-------------|
+| `processed_text` | Prompt with redundant subtags removed |
+| `filtered_tags` | Comma-separated list of the removed subtags |
 
 #### SDXLTokenAnalyzer
 
@@ -112,9 +123,9 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 
 ---
 
-### Danbooru Nodes (`AlcheminePack/Danbooru`) *(Disabled by default)*
+### Danbooru Nodes (`AlcheminePack/Danbooru`)
 
-> ℹ️ The Danbooru nodes are present in the source tree but currently **not registered** in `__init__.py`. To enable them, uncomment the relevant imports and entries in `__init__.py`, then run `playwright install`.
+> ℹ️ These nodes use plain `requests` (`danbooru_requests.py`) — no browser dependency. A Playwright-based variant (`danbooru.py`) is kept in the source tree as an alternative; to use it instead, swap the import in `__init__.py` and `pip install playwright`. An optional Webshare proxy can be configured via `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` in `.env`.
 
 
 ![Danbooru Workflow](workflows/comfyui-alchemine-pack-workflow-Danbooru.png)
@@ -126,7 +137,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **Danbooru Popular Posts Tags Retriever** | Gets tags from popular posts (daily/weekly/monthly). |
 | **Danbooru Posts Downloader** | Downloads images from Danbooru based on search tags. |
 
-> ⚠️ **Note:** Too many requests can result in blocking. Use caching and rate limiting.
+> ⚠️ **Note:** Responses are cached to limit requests — a single post (by id) is cached for the process lifetime, while volatile endpoints (popular / related / search) use a 1-hour TTL. Heavy use can still hit Danbooru's rate limits.
 
 #### Danbooru Post Tags Retriever
 
@@ -162,8 +173,13 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | `date` | STRING | "" | Date (YYYY-MM-DD format, empty for latest) |
 | `scale` | ENUM | "day" | Time scale (day/week/month) |
 | `n` | INT | 1 | Number of posts to retrieve |
-| `random` | BOOLEAN | True | Random selection |
-| `seed` | INT | 0 | Random seed |
+| `random` | BOOLEAN | True | `True`: random sample of `n` posts; `False`: the ranked posts at `[offset, offset+n)` in popularity order |
+| `seed` | INT | 0 | Random seed (only used when `random=True`) |
+| `offset` | INT | 0 | Starting rank in popularity order (only used when `random=False`). Has `control_after_generate` — set it to *increment* to step down the ranking one post per run. Raises if the rank doesn't exist. |
+
+Outputs are **lists** (one entry per post): `full_tags` / `general_tags` / `character_tags` / `copyright_tags` / `artist_tags` / `meta_tags`.
+
+> **Tip — walk the ranking one at a time:** set `random=False`, `n=1`, and `offset`'s control to *increment*. Each queue returns the next most-popular post, fetching only the single page it lives on.
 
 #### Danbooru Posts Downloader
 
@@ -176,82 +192,43 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 
 ---
 
-### Inference Nodes (`AlcheminePack/Inference`) *(Disabled by default)*
-
-> ℹ️ The Inference nodes are present in the source tree but currently **not registered** in `__init__.py`. To enable them, uncomment the relevant imports and entries in `__init__.py`.
-
+### Inference Nodes (`AlcheminePack/Inference`)
 
 ![Inference Workflow](workflows/comfyui-alchemine-pack-workflow-Inference.png)
 
 | Node | Description |
 |------|-------------|
-| **Gemini Inference** | Generate text using Google Gemini API. Supports vision and thinking mode. |
-| **Ollama Inference** | Generate text using local Ollama API. Supports vision models. |
-| **Text Editing Inference** | Grammar correction and text editing using CoEdit model. |
+| **OpenAI Inference** | Generate text via any OpenAI-compatible API. Supports vision and thinking mode. |
 
-#### Gemini Inference
+#### OpenAI Inference
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `system_instruction` | STRING | "You are a helpful assistant." | System prompt |
-| `prompt` | STRING | "Hello, world!" | User prompt |
-| `gemini_api_key` | STRING | "" | API key (or set in `config.json`) |
-| `model` | STRING | "latest" | Model name (`latest`, `latest-flash-lite`, `latest-pro-preview`, etc.) |
-| `max_output_tokens` | INT | 100 | Maximum output tokens |
-| `seed` | INT | 0 | Random seed |
-| `think` | BOOLEAN | False | Enable thinking mode |
-| `candidate_count` | INT | 1 | Number of candidates (1-8) |
-| `image` | IMAGE | (optional) | Input image for vision tasks |
-
-#### Ollama Inference
+A single node for every OpenAI-compatible backend — OpenAI, vLLM, Ollama's `/v1` endpoint, and Gemini's OpenAI-compatible endpoint. Just point `base_url`/`api_key`/`model` at the server you want.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `system_instruction` | STRING | "You are a helpful assistant." | System prompt |
 | `prompt` | STRING | "Hello, world!" | User prompt |
-| `ollama_url` | STRING | "" | Ollama API URL (or set in `config.json`) |
-| `model` | STRING | "" | Model name (must be available in Ollama) |
-| `max_output_tokens` | INT | 100 | Maximum output tokens |
+| `system_instruction` | STRING | "You are a helpful assistant." | System prompt |
+| `base_url` | STRING | "" | API base URL, e.g. `https://api.openai.com/v1` (or set in `config.json`) |
+| `api_key` | STRING | "" | API key (or set in `config.json`) |
+| `model` | STRING | "" | Model name. If empty, auto-detected from `/models` when exactly one is available |
+| `max_output_tokens` | INT | 100 | Maximum output tokens (up to 131072) |
 | `seed` | INT | 0 | Random seed |
+| `temperature` | FLOAT | 0.7 | Sampling temperature (0.0–2.0) |
 | `think` | BOOLEAN | False | Enable thinking mode |
 | `image` | IMAGE | (optional) | Input image for vision tasks |
 
-#### Text Editing Inference
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `predefined_system_instruction` | ENUM | "Fix the grammar" | Predefined instruction |
-| `system_instruction` | STRING | "" | Custom instruction (overrides predefined if set) |
-| `prompt` | STRING | (example text) | Input text to edit |
-| `seed` | INT | 0 | Random seed |
-
-Available predefined instructions:
-- Fix the grammar
-- Make this text coherent
-- Rewrite to make this easier to understand
-- Paraphrase this
-- Write this more formally
-- Write in a more neutral way
+| Output | Description |
+|--------|-------------|
+| `response` | The model's answer (with any `<think>` block stripped out) |
+| `reasoning` | The reasoning/thinking trace, from `reasoning_content` or an inline `<think>...</think>` block (empty if none) |
 
 ---
 
-### Input Nodes (`AlcheminePack/Input`)
-
-![Input Workflow](workflows/comfyui-alchemine-pack-workflow-Input.png)
+### Evaluate Nodes (`AlcheminePack/Evaluate`)
 
 | Node | Description |
 |------|-------------|
-| **Width Height** | Configurable width/height with swap and scale options. |
 | **Evaluate** | Runs user-defined Python code against an input string and returns the transformed result. Useful for ad-hoc tag manipulation inside a workflow. |
-
-#### Width Height
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `width` | INT | 512 | Width value |
-| `height` | INT | 512 | Height value |
-| `swap` | BOOLEAN | False | Swap width and height |
-| `scale` | FLOAT | 1.0 | Scale multiplier |
 
 #### Evaluate
 
@@ -282,43 +259,22 @@ def main(tag: str) -> str:
 
 | Node | Description |
 |------|-------------|
-| **Signal Switch** | Passes `value` after `signal` is received. Controls execution order. |
+| **Lazy Execution** | Passes `value` through only after `signal` resolves. Controls execution order, and propagates an upstream `ExecutionBlocker` on `signal` to gate downstream nodes. |
 
-#### Signal Switch
+#### Lazy Execution
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `signal` | ANY | Signal input (waits for this to complete) |
 | `value` | ANY | Value to pass through |
-
-**Use Case:** When you need sequential execution (e.g., run generation B only after generation A completes).
-
----
-
-### IO Nodes (`AlcheminePack/IO`) *(Experimental)*
-
-| Node | Description |
-|------|-------------|
-| **AsyncSaveImage** | Saves images asynchronously using a background thread (non-blocking). |
-| **PreviewLatestImage** | Loads the most recently created image (by ctime) under `output/<filename_prefix>`. |
-
-#### AsyncSaveImage
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `images` | IMAGE | (required) | Images to save |
-| `filename_prefix` | STRING | "ComfyUI" | Filename prefix (supports `%date:...%`, node-value placeholders) |
-
-#### PreviewLatestImage
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `filename_prefix` | STRING | "ComfyUI" | Subfolder / filename prefix under the ComfyUI output directory to scan |
+| `signal` | ANY | Gate input — `value` is only forwarded once this resolves |
 
 | Output | Description |
 |--------|-------------|
-| `IMAGE` | The most recently created image |
-| `MASK` | Alpha channel as mask (zero mask if no alpha) |
+| `value` | The `value` input, forwarded once `signal` has resolved |
+
+**Use Case:** When you need sequential execution (e.g., run generation B only after generation A completes), or want a downstream branch to be skipped while an upstream node returns an `ExecutionBlocker` (e.g. gate an **OpenAI Inference** + **Api Submit** chain on **Api Collect** so a new job is only built once the previous one finishes).
+
+> **Muting to prime a gated graph:** because `value` is the **first** input, muting (bypassing) this node passes `value` straight through, ignoring `signal`. This is handy for cold-starting a loop that would otherwise be blocked forever — e.g. when **Api Collect** has no job yet and keeps emitting an `ExecutionBlocker`, mute the gate for one run to fire the first **Api Submit**, then un-mute it to resume normal gating.
 
 ---
 
@@ -357,6 +313,166 @@ def main(tag: str) -> str:
 
 ---
 
+### Grok Nodes (`AlcheminePack/Grok`)
+
+| Node | Description |
+|------|-------------|
+| **Grok Generate** | Generates a Grok Imagine image-to-video clip from a single image and saves it to the output folder as a native VIDEO (with inline preview). |
+| **Grok Submit** | Fire-and-forget submit; sends the generation request and returns immediately with a `request_id` (does not wait). |
+| **Grok Collect** | Collects the in-flight job submitted by Grok Submit; returns the VIDEO when ready, otherwise blocks downstream. |
+
+#### Grok Generate
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `image` | IMAGE | (required) | Source image (first frame) |
+| `prompt` | STRING | "" | Motion / scene description (optional) |
+| `duration` | INT | 5 | Clip length in seconds (1–15) |
+| `resolution` | ENUM | "720p" | "720p" or "480p" |
+| `model` | STRING | "grok-imagine-video-1.5-preview" | Grok video model |
+| `filename_prefix` | STRING | "grok/GrokVideo" | Output path prefix under the ComfyUI output directory |
+| `poll_interval` | INT | 5 | Seconds between status polls (1–60) |
+| `timeout` | INT | 600 | Max seconds to wait for generation (30–3600) |
+| `access_token` | STRING | "" | Optional. Falls back to `GROK_ACCESS_TOKEN` env var |
+| `refresh_token` | STRING | "" | Optional. Falls back to `GROK_REFRESH_TOKEN` env var |
+| `client_id` | STRING | "" | Optional. Falls back to `GROK_CLIENT_ID` env var |
+
+| Output | Description |
+|--------|-------------|
+| `video` | Generated clip (with audio), also previewed inline on the node |
+
+> **Credentials:** Provide the three tokens as node inputs, or leave them empty to read `GROK_ACCESS_TOKEN` / `GROK_REFRESH_TOKEN` / `GROK_CLIENT_ID` from the environment. The access token is auto-refreshed on a 401.
+
+#### Grok Submit
+
+Same inputs as **Grok Generate** (minus `poll_interval`/`timeout`), plus an optional `label`. This is an OUTPUT_NODE, so it runs even when nothing consumes its output. The mp4 output path is reserved at submit time and recorded in the lock; Collect writes to it when the clip is ready.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `label` | STRING | "" | Optional label recorded with the job (returned later by Grok Collect) |
+
+| Output | Description |
+|--------|-------------|
+| `request_id` | The submitted job's request id (empty string if a Grok job is already in progress) |
+
+#### Grok Collect
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `wait_sec` | INT | 0 | `0` = collect if ready, else skip immediately; otherwise wait up to this many seconds (0–3600) |
+| `poll_interval` | FLOAT | 5.0 | Seconds between polls while waiting (0.5–60.0) |
+| `access_token` | STRING | "" | Optional. Falls back to `GROK_ACCESS_TOKEN` env var |
+| `refresh_token` | STRING | "" | Optional. Falls back to `GROK_REFRESH_TOKEN` env var |
+| `client_id` | STRING | "" | Optional. Falls back to `GROK_CLIENT_ID` env var |
+
+| Output | Description |
+|--------|-------------|
+| `video` | Collected clip when ready; otherwise an `ExecutionBlocker` that skips downstream |
+| `label` | The label recorded at submit time |
+
+> **Credentials at collect:** Collect also calls the Grok API (to poll/download), so it re-reads the tokens from its inputs or the env — tokens are **not** persisted in the lock file. Provide them the same way as on Grok Generate.
+
+> **One in-flight job per kind:** The Grok and [API](#api-nodes-alcheminepackapi) nodes share a single `jobs.lock` (in the pack directory) but each kind gets its own slot — a Grok job and an API job can both be in flight, but only one of each. Submit skips if a job of that kind is already in flight, and Collect frees the slot once it finishes. Run Collect in a loop (e.g. `/loop`) to pick up the clip when it's done.
+
+---
+
+### Model Nodes (`AlcheminePack/Model`)
+
+| Node | Description |
+|------|-------------|
+| **Cached Load LoRA Tag** | Loads the LoRAs referenced by `<lora:name:weight>` tags in the text and caches the patched result. |
+
+#### Cached Load LoRA Tag
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model` | MODEL | (required) | Base model to patch |
+| `clip` | CLIP | (required) | Base CLIP to patch |
+| `text` | STRING (multiline) | (required) | Prompt containing `<lora:...>` tags |
+
+| Output | Description |
+|--------|-------------|
+| `MODEL` | Model patched with the referenced LoRAs |
+| `CLIP` | CLIP patched with the referenced LoRAs |
+| `STRING` | The prompt with all lora tags stripped out |
+
+- Tag format: `<lora:name:model_weight:clip_weight>` — the clip weight is optional and defaults to the model weight; a tag with no weight loads at 0.
+- `name` is matched as a prefix against files in the `loras` folder; unmatched tags are skipped.
+- The patched result is cached while `text`/`model`/`clip` are unchanged, skipping LoRA re-loading and re-patching.
+
+---
+
+### API Nodes (`AlcheminePack/API`)
+
+Run a workflow on a remote ComfyUI instance over its HTTP API (e.g. a [RunPod](https://www.runpod.io/) pod or any reachable ComfyUI). All nodes take the **API-format** workflow JSON (ComfyUI menu: "Save (API Format)"), not the UI workflow format. `api_url` is the remote base URL, e.g. `https://xxxx-8188.proxy.runpod.net/` or `http://127.0.0.1:8188`.
+
+| Node | Description |
+|------|-------------|
+| **Load Workflow** | Loads an API-format workflow JSON from `ComfyUI/user/default/workflows/` and returns it as a STRING. |
+| **Api Generate** | Sends a workflow to a remote ComfyUI, waits for completion, and returns the output image/frames. |
+| **Api Submit** | Fire-and-forget submit; records the job and returns immediately with a `job_id` (does not wait). |
+| **Api Collect** | Collects the in-flight job submitted by Api Submit; returns frames when ready, otherwise blocks downstream. |
+
+#### Load Workflow
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `filename` | ENUM | (required) | A `.json` file under `user/default/workflows/` |
+
+| Output | Description |
+|--------|-------------|
+| `text` | The workflow JSON contents |
+
+#### Api Generate
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `workflow` | STRING (input) | (required) | API-format workflow JSON string, or path to a file |
+| `positive_prompt` | STRING (input) | (required) | Positive prompt, injected into `positive_prompt_id` |
+| `positive_prompt_id` | STRING | (required) | Node id receiving the positive prompt |
+| `negative_prompt_id` | STRING | "" | Node id receiving `negative_prompt` (when provided) |
+| `output_id` | STRING | "" | Node id whose `images`/`gifs` output is fetched and decoded |
+| `seed` | INT | -1 | `-1` keeps the workflow's existing seed |
+| `seed_id` | STRING | "" | Node id whose `seed`/`noise_seed` input receives `seed` |
+| `api_url` | STRING | "" | Remote ComfyUI base URL, e.g. `https://xxxx-8188.proxy.runpod.net/` or `http://127.0.0.1:8188` |
+| `image_node_id` | STRING | "" | LoadImage node id receiving the uploaded `image` |
+| `timeout_sec` | INT | 300 | Max polling time in seconds (1–36000) |
+| `negative_prompt` | STRING (input) | "" | Optional. Skipped if empty |
+| `image` | IMAGE | (optional) | Optional. Uploaded to the remote and bound to `image_node_id` |
+| `overrides` | STRING (input) | "" | Optional JSON `{node_id: <full node dict>}`; each entry **replaces the entire node entry**, applied last |
+
+| Output | Description |
+|--------|-------------|
+| `output` | Decoded image/frame tensor (animated outputs are expanded to frames) |
+
+#### Api Submit
+
+Same inputs as **Api Generate** (minus `timeout_sec`), plus an optional `label`. This is an OUTPUT_NODE, so it runs even when nothing consumes its output.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `label` | STRING | "" | Optional label recorded with the job (returned later by Api Collect) |
+
+| Output | Description |
+|--------|-------------|
+| `job_id` | The submitted job id (empty string if a job is already in progress) |
+
+#### Api Collect
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `wait_sec` | INT | 0 | `0` = collect if ready, else skip immediately; otherwise wait up to this many seconds (0–36000) |
+| `poll_interval` | FLOAT | 2.0 | Seconds between polls while waiting (0.5–60.0) |
+
+| Output | Description |
+|--------|-------------|
+| `output` | Collected frames when ready; otherwise an `ExecutionBlocker` that skips downstream |
+| `label` | The label recorded at submit time |
+
+> **One in-flight job per kind:** The API and [Grok](#grok-nodes-alcheminepackgrok) nodes share a single `jobs.lock` (in the pack directory) but each kind gets its own slot — an API job and a Grok job can both be in flight, but only one of each. Submit skips if a job of that kind is already in flight, and Collect frees the slot once it finishes. Run Collect in a loop (e.g. `/loop`) to pick up the result when it's done.
+
+---
+
 ## Wildcard Support
 
 The `FilterTags` and `ProcessTags` nodes support wildcards defined in `resources/wildcards.yaml`.
@@ -365,16 +481,36 @@ The `FilterTags` and `ProcessTags` nodes support wildcards defined in `resources
 
 ## Configuration
 
-Create a `config.json` file in the root of this package for API keys and settings:
+> **`.env` is optional** — the pack always loads without it. Copy [`.env.example`](.env.example) to `.env` and set only the variables you need (or pass the same values as node inputs). A node that needs a credential it can't find raises a clear error (shown as a ComfyUI error dialog) **when you run it**; nothing fails at load time.
+
+### `config.json` (OpenAI Inference defaults)
+
+Create a `config.json` file in the root of this package to supply default `base_url`/`api_key` for the **OpenAI Inference** node (used when the node inputs are left empty):
 
 ```json
 {
   "inference": {
-    "gemini_api_key": "your-gemini-api-key",
-    "ollama_url": "http://localhost:11434"
+    "openai_base_url": "https://api.openai.com/v1",
+    "openai_api_key": "your-api-key"
   }
 }
 ```
+
+### Grok credentials (`.env` or node inputs)
+
+The **Grok Generate** node reads its credentials from the node inputs first, falling back to these `.env` variables when the inputs are empty:
+
+```
+GROK_ACCESS_TOKEN=...
+GROK_REFRESH_TOKEN=...
+GROK_CLIENT_ID=...
+```
+
+The access token is auto-refreshed on a 401/403. If you hit a `Grok token refresh failed (...)` error, the refresh token or client_id has expired/been revoked — re-authenticate with x.ai and update these values.
+
+### Webshare proxy (optional, Danbooru)
+
+Set `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` in `.env` to route the Danbooru nodes through a proxy; leave them unset to connect directly.
 
 ## Examples
 

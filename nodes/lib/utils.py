@@ -4,6 +4,7 @@ import re
 import json
 import asyncio
 import logging
+import threading
 from pathlib import Path
 from functools import wraps
 
@@ -15,7 +16,15 @@ from dotenv import load_dotenv
 #################################################################
 ROOT_DIR = Path(__file__).parent.parent.parent
 CUSTOM_NODES_DIR = ROOT_DIR.parent
-load_dotenv(ROOT_DIR / ".env")
+
+# `.env` is optional: load it when present, otherwise just use the OS
+# environment. Nodes that actually need a credential read it at execution time
+# and raise a clear error (shown as a ComfyUI error dialog) if it's still unset,
+# so the pack always loads even without a `.env`.
+_env_path = ROOT_DIR / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
+
 with open(ROOT_DIR / "config.json", "r") as f:
     CONFIG = json.load(f)
 RESOURCES_DIR = ROOT_DIR / "resources"
@@ -201,21 +210,32 @@ any_typ = AnyType("*")
 #################################################################
 # Async utilities
 #################################################################
-# import nest_asyncio
+def run_async(coro):
+    """Run a coroutine to completion from a sync context.
 
-# def run_async(coro):
-#     """Run async coroutine safely in any context.
+    - No event loop running in this thread: use ``asyncio.run()`` directly.
+    - A loop is already running (e.g. ComfyUI's async execution): run the
+      coroutine in a separate thread with its own loop, so we neither touch nor
+      block the running loop. This avoids ``nest_asyncio``'s global monkey-patch
+      of the shared event loop.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop in this thread.
+        return asyncio.run(coro)
 
-#     Handles both:
-#     - Sync context (no event loop): uses asyncio.run()
-#     - Async context (running event loop): uses nest_asyncio to allow nested loops
-#     """
-#     try:
-#         asyncio.get_running_loop()
-#         # If we get here, there's a running loop - use nest_asyncio
-#         nest_asyncio.apply()
-#         loop = asyncio.get_event_loop()
-#         return loop.run_until_complete(coro)
-#     except RuntimeError:
-#         # No running loop - safe to use asyncio.run()
-#         return asyncio.run(coro)
+    box: dict = {}
+
+    def _runner() -> None:
+        try:
+            box["result"] = asyncio.run(coro)
+        except BaseException as e:  # noqa: BLE001 - re-raised on the caller's thread
+            box["error"] = e
+
+    thread = threading.Thread(target=_runner)
+    thread.start()
+    thread.join()
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
