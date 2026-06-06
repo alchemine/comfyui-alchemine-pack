@@ -27,6 +27,12 @@ CACHE_MAX_SIZE = 10
 # raise it so large context models can return full-length responses.
 MAX_OUTPUT_TOKENS_LIMIT = 131072
 
+# `requests` blocks forever without a timeout, so a wrong/unreachable `base_url`
+# would hang the node indefinitely. Use a short *connect* timeout to fail fast
+# on a bad host, but leave the *read* timeout open (None) so legitimately long
+# generations are never cut off. No retries — surface the error immediately.
+CONNECT_TIMEOUT = 10
+
 
 #################################################################
 # Base class
@@ -210,6 +216,7 @@ class OpenAIInference(BaseInference):
             f"{base_url.rstrip('/')}/chat/completions",
             headers=headers,
             json=payload,
+            timeout=(CONNECT_TIMEOUT, None),
         )
         response.raise_for_status()
         message = response.json()["choices"][0]["message"]
@@ -248,6 +255,7 @@ class OpenAIInference(BaseInference):
         response = requests.get(
             f"{base_url.rstrip('/')}/models",
             headers=headers,
+            timeout=(CONNECT_TIMEOUT, 30),
         )
         response.raise_for_status()
         models = [m["id"] for m in response.json()["data"]]
