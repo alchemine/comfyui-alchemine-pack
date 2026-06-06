@@ -7,7 +7,7 @@ description = """SDXL prompt/tag tooling plus LLM, video, and remote-execution n
 [a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png): OpenAI-compatible API Inference
 Python evaluate, Grok, remote ComfyUI API execution, Cached LoRA Tag loader, etc."""
 
-version = "2.0.0"
+version = "2.0.1"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [

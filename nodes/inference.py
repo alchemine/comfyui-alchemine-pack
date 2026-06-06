@@ -31,7 +31,7 @@ MAX_OUTPUT_TOKENS_LIMIT = 131072
 # would hang the node indefinitely. Use a short *connect* timeout to fail fast
 # on a bad host, but leave the *read* timeout open (None) so legitimately long
 # generations are never cut off. No retries — surface the error immediately.
-CONNECT_TIMEOUT = 10
+CONNECT_TIMEOUT = 1
 
 
 #################################################################
