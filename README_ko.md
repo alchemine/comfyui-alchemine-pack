@@ -208,8 +208,8 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 |----------|------|--------|------|
 | `prompt` | STRING | "Hello, world!" | 사용자 프롬프트 |
 | `system_instruction` | STRING | "You are a helpful assistant." | 시스템 프롬프트 |
-| `base_url` | STRING | "" | API base URL, 예: `https://api.openai.com/v1` (`config.json`에 설정 가능) |
-| `api_key` | STRING | "" | API 키 (`config.json`에 설정 가능) |
+| `base_url` | STRING | "" | API base URL, 예: `https://api.openai.com/v1` (`.env`의 `OPENAI_BASE_URL`로 설정 가능) |
+| `api_key` | STRING | "" | API 키 (`.env`의 `OPENAI_API_KEY`로 설정 가능) |
 | `model` | STRING | "" | 모델명. 비우면 `/models`에 모델이 하나일 때 자동 감지 |
 | `max_output_tokens` | INT | 100 | 최대 출력 토큰 (최대 131072) |
 | `seed` | INT | 0 | 랜덤 시드 |
@@ -404,6 +404,8 @@ def main(tag: str) -> str:
 
 ### API 노드 (`AlcheminePack/API`)
 
+![API Workflow](workflows/comfyui-alchemine-pack-workflow-API.png)
+
 워크플로우를 원격 ComfyUI 인스턴스의 HTTP API로 실행합니다 (예: [RunPod](https://www.runpod.io/) 파드 또는 접근 가능한 임의의 ComfyUI). 모든 노드는 UI 워크플로우 포맷이 아니라 **API 포맷** 워크플로우 JSON(ComfyUI 메뉴: "Save (API Format)")을 받습니다. `api_url`은 원격 베이스 URL로, 예: `https://xxxx-8188.proxy.runpod.net/` 또는 `http://127.0.0.1:8188` 입니다.
 
 | 노드 | 설명 |
@@ -483,17 +485,13 @@ def main(tag: str) -> str:
 
 > **`.env`는 선택 사항입니다** — 없어도 팩은 항상 정상 로드됩니다. [`.env.example`](.env.example)을 `.env`로 복사한 뒤 필요한 변수만 채우세요 (또는 같은 값을 노드 입력으로 전달). 자격증명이 필요한 노드가 값을 못 찾으면 **실행 시점에** 명확한 에러(ComfyUI 에러 창)를 띄웁니다 — 로딩 단계에선 절대 죽지 않습니다.
 
-### `config.json` (OpenAI Inference 기본값)
+### OpenAI Inference 기본값 (`.env` 또는 노드 입력)
 
-이 패키지 루트에 `config.json`을 생성하여 **OpenAI Inference** 노드의 기본 `base_url`/`api_key`를 지정합니다 (노드 입력을 비워 두면 사용됨):
+**OpenAI Inference** 노드는 먼저 노드 입력에서 `base_url`/`api_key`를 읽고, 입력이 비어 있으면 아래 `.env` 변수를 폴백으로 사용합니다:
 
-```json
-{
-  "inference": {
-    "openai_base_url": "https://api.openai.com/v1",
-    "openai_api_key": "your-api-key"
-  }
-}
+```
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=your-api-key
 ```
 
 ### Grok 자격증명 (`.env` 또는 노드 입력)

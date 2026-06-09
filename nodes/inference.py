@@ -5,6 +5,7 @@ A single `OpenAIInference` node covers every OpenAI-compatible backend
 etc.) — just point `base_url`/`api_key`/`model` at the desired server.
 """
 
+import os
 import re
 from io import BytesIO
 from base64 import b64encode
@@ -14,7 +15,7 @@ import requests
 import numpy as np
 from PIL import Image
 
-from .lib.utils import get_logger, CONFIG
+from .lib.utils import get_logger
 
 
 logger = get_logger()
@@ -92,8 +93,8 @@ class OpenAIInference(BaseInference):
     Args:
         system_instruction (str): System instruction.
         prompt (str): Prompt.
-        base_url (str): API base URL (e.g. https://api.openai.com/v1). Falls back to `config.json`.
-        api_key (str): API key. Falls back to `config.json`.
+        base_url (str): API base URL (e.g. https://api.openai.com/v1). Falls back to `OPENAI_BASE_URL` in `.env`.
+        api_key (str): API key. Falls back to `OPENAI_API_KEY` in `.env`.
         model (str | None): Model name (e.g. gpt-4o, gpt-4o-mini). If None, auto-detected from /models endpoint (uses the model if only one is available).
         max_output_tokens (int): Maximum output tokens.
         seed (int): Seed.
@@ -160,9 +161,14 @@ class OpenAIInference(BaseInference):
         temperature: float = 0.7,
         think: bool = False,
     ) -> tuple[str, str]:
-        # Resolve config
-        base_url = base_url or CONFIG["inference"]["openai_base_url"]
-        api_key = api_key or CONFIG["inference"]["openai_api_key"]
+        # Resolve config: node inputs take priority, then fall back to `.env`.
+        base_url = base_url or os.environ.get("OPENAI_BASE_URL", "")
+        api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        if not base_url:
+            raise ValueError(
+                "base_url is not set. Provide it on the node or set "
+                "OPENAI_BASE_URL in `.env`."
+            )
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",

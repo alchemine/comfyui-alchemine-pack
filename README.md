@@ -208,8 +208,8 @@ A single node for every OpenAI-compatible backend — OpenAI, vLLM, Ollama's `/v
 |-----------|------|---------|-------------|
 | `prompt` | STRING | "Hello, world!" | User prompt |
 | `system_instruction` | STRING | "You are a helpful assistant." | System prompt |
-| `base_url` | STRING | "" | API base URL, e.g. `https://api.openai.com/v1` (or set in `config.json`) |
-| `api_key` | STRING | "" | API key (or set in `config.json`) |
+| `base_url` | STRING | "" | API base URL, e.g. `https://api.openai.com/v1` (or set `OPENAI_BASE_URL` in `.env`) |
+| `api_key` | STRING | "" | API key (or set `OPENAI_API_KEY` in `.env`) |
 | `model` | STRING | "" | Model name. If empty, auto-detected from `/models` when exactly one is available |
 | `max_output_tokens` | INT | 100 | Maximum output tokens (up to 131072) |
 | `seed` | INT | 0 | Random seed |
@@ -404,6 +404,8 @@ Same inputs as **Grok Generate** (minus `poll_interval`/`timeout`), plus an opti
 
 ### API Nodes (`AlcheminePack/API`)
 
+![API Workflow](workflows/comfyui-alchemine-pack-workflow-API.png)
+
 Run a workflow on a remote ComfyUI instance over its HTTP API (e.g. a [RunPod](https://www.runpod.io/) pod or any reachable ComfyUI). All nodes take the **API-format** workflow JSON (ComfyUI menu: "Save (API Format)"), not the UI workflow format. `api_url` is the remote base URL, e.g. `https://xxxx-8188.proxy.runpod.net/` or `http://127.0.0.1:8188`.
 
 | Node | Description |
@@ -483,17 +485,13 @@ The `FilterTags` and `ProcessTags` nodes support wildcards defined in `resources
 
 > **`.env` is optional** — the pack always loads without it. Copy [`.env.example`](.env.example) to `.env` and set only the variables you need (or pass the same values as node inputs). A node that needs a credential it can't find raises a clear error (shown as a ComfyUI error dialog) **when you run it**; nothing fails at load time.
 
-### `config.json` (OpenAI Inference defaults)
+### OpenAI Inference defaults (`.env` or node inputs)
 
-Create a `config.json` file in the root of this package to supply default `base_url`/`api_key` for the **OpenAI Inference** node (used when the node inputs are left empty):
+The **OpenAI Inference** node reads `base_url`/`api_key` from the node inputs first, falling back to these `.env` variables when the inputs are empty:
 
-```json
-{
-  "inference": {
-    "openai_base_url": "https://api.openai.com/v1",
-    "openai_api_key": "your-api-key"
-  }
-}
+```
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=your-api-key
 ```
 
 ### Grok credentials (`.env` or node inputs)

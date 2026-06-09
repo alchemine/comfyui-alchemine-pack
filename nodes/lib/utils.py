@@ -1,7 +1,6 @@
 """Utility module for nodes."""
 
 import re
-import json
 import asyncio
 import logging
 import threading
@@ -25,8 +24,6 @@ _env_path = ROOT_DIR / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
 
-with open(ROOT_DIR / "config.json", "r") as f:
-    CONFIG = json.load(f)
 RESOURCES_DIR = ROOT_DIR / "resources"
 WILDCARD_PATH = RESOURCES_DIR / "wildcards.yaml"
 

@@ -1,13 +1,14 @@
 [project]
 name = "comfyui-alchemine-pack"
-description = """SDXL prompt/tag tooling plus LLM, video, and remote-execution nodes.
+description = """Prompt filterings, Danbooru, LLM(Inference), API, lazy execution nodes, etc.
 [a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png): filtering, token analyzing, auto BREAK, prompt processors
 [a/Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png): tag and post retriever
-[a/FlowControl](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png): lazy execution
 [a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png): OpenAI-compatible API Inference
-Python evaluate, Grok, remote ComfyUI API execution, Cached LoRA Tag loader, etc."""
+[a/API](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-API.png): remote ComfyUI API execution
+[a/FlowControl](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png): lazy execution
+Python evaluate, Grok, Cached LoRA Tag loader, etc."""
 
-version = "2.0.1"
+version = "2.1.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
