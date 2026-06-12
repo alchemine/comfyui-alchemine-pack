@@ -18,8 +18,10 @@ from PIL import Image
 
 from comfy_execution.graph import ExecutionBlocker
 
-from .lib.utils import any_typ
+from .lib.utils import any_typ, get_logger
 from .lib import joblock
+
+logger = get_logger(__file__)
 
 # This module's slot in the shared `jobs.lock` (the Grok nodes use "grok").
 _KIND = "api"
@@ -259,7 +261,7 @@ def _apply_overrides(wf: dict, overrides_str: str) -> None:
         try:
             restored = _restore_stripped_braces(s)
             data = json.loads(restored)
-            print("[ApiGenerate] overrides: recovered from wildcard-stripped braces")
+            logger.info("[ApiGenerate] overrides: recovered from wildcard-stripped braces")
         except json.JSONDecodeError as e2:
             preview = s[:200].replace("\n", "\\n")
             raise ValueError(
@@ -272,7 +274,7 @@ def _apply_overrides(wf: dict, overrides_str: str) -> None:
         if not isinstance(node, dict):
             raise ValueError(f"overrides[{node_id!r}] must be a dict")
         wf[str(node_id)] = node
-    print(f"[ApiGenerate] overrode {len(data)} node(s): {list(data.keys())}")
+    logger.info(f"[ApiGenerate] overrode {len(data)} node(s): {list(data.keys())}")
 
 
 def _validate_api_url(api_url: str) -> None:
@@ -305,10 +307,10 @@ def _prepare_and_submit(
         if not negative_prompt_id:
             raise ValueError("`negative_prompt_id` is required when `negative_prompt` is provided")
         _inject_text(wf, negative_prompt_id, negative_prompt)
-        print(f"[ApiSubmit] negative prompt injected into node {negative_prompt_id}")
+        logger.info(f"[ApiSubmit] negative prompt injected into node {negative_prompt_id}")
     if seed != -1:
         _inject_seed(wf, seed_id, seed)
-        print(f"[ApiSubmit] seed {seed} injected into node {seed_id}")
+        logger.info(f"[ApiSubmit] seed {seed} injected into node {seed_id}")
 
     if image is not None:
         if not image_node_id:
@@ -317,7 +319,7 @@ def _prepare_and_submit(
         filename = f"api_input_{uuid.uuid4().hex}.png"
         uploaded = client.upload_image(png, filename)
         _inject_image(wf, image_node_id, uploaded)
-        print(f"[ApiSubmit] uploaded image as {uploaded!r}, injected into node {image_node_id}")
+        logger.info(f"[ApiSubmit] uploaded image as {uploaded!r}, injected into node {image_node_id}")
 
     _apply_overrides(wf, overrides)
     return client.submit(wf)
@@ -353,7 +355,7 @@ def _extract_images_tensor(
             pil = Image.open(io.BytesIO(data))
         except Exception as e:
             # Non-image (e.g. mp4 from VHS_VideoCombine) — skip.
-            print(f"[ApiGenerate] skipping non-image output {img.get('filename')}: {e}")
+            logger.debug(f"[ApiGenerate] skipping non-image output {img.get('filename')}: {e}")
             continue
         if getattr(pil, "is_animated", False):
             for frame_idx in range(pil.n_frames):
@@ -534,10 +536,10 @@ class ApiGenerate(BaseApi):
             if not negative_prompt_id:
                 raise ValueError("`negative_prompt_id` is required when `negative_prompt` is provided")
             _inject_text(wf, negative_prompt_id, negative_prompt)
-            print(f"[ApiGenerate] negative prompt injected into node {negative_prompt_id}")
+            logger.info(f"[ApiGenerate] negative prompt injected into node {negative_prompt_id}")
         if seed != -1:
             _inject_seed(wf, seed_id, seed)
-            print(f"[ApiGenerate] seed {seed} injected into node {seed_id}")
+            logger.info(f"[ApiGenerate] seed {seed} injected into node {seed_id}")
 
         client = ApiComfyClient(api_url, None)
 
@@ -548,15 +550,15 @@ class ApiGenerate(BaseApi):
             filename = f"api_input_{uuid.uuid4().hex}.png"
             uploaded = client.upload_image(png, filename)
             _inject_image(wf, image_node_id, uploaded)
-            print(f"[ApiGenerate] uploaded image as {uploaded!r}, injected into node {image_node_id}")
+            logger.info(f"[ApiGenerate] uploaded image as {uploaded!r}, injected into node {image_node_id}")
 
         _apply_overrides(wf, overrides)
 
         prompt_id = client.submit(wf)
-        print(f"[ApiGenerate] submitted prompt_id={prompt_id}, polling up to {timeout_sec}s...")
+        logger.info(f"[ApiGenerate] submitted prompt_id={prompt_id}, polling up to {timeout_sec}s...")
         outputs = client.wait(prompt_id, timeout=timeout_sec)
         image_tensor = _extract_images_tensor(client, outputs, output_id or None)
-        print(f"[ApiGenerate] received {image_tensor.shape[0]} frame(s)")
+        logger.info(f"[ApiGenerate] received {image_tensor.shape[0]} frame(s)")
         return (image_tensor,)
 
 
@@ -663,12 +665,12 @@ class ApiSubmit(BaseApi):
             if cur is not None:
                 age = time.time() - cur.get("submitted_at", 0)
                 if age < _STALE_SEC:
-                    print(
+                    logger.debug(
                         f"[ApiSubmit] job already in progress "
                         f"(prompt_id={cur.get('prompt_id')}); skipping submit"
                     )
                     return {"ui": {"text": ["(skipped: in progress)"]}, "result": ("",)}
-                print(
+                logger.info(
                     f"[ApiSubmit] stale lock ({age:.0f}s old); overriding and resubmitting"
                 )
 
@@ -697,7 +699,7 @@ class ApiSubmit(BaseApi):
                     "submitted_at": time.time(),
                 }
             )
-        print(
+        logger.info(
             f"[ApiSubmit] submitted job {job_id} (prompt_id={prompt_id}, "
             f"label={label!r}); returning immediately"
         )
@@ -759,14 +761,14 @@ class ApiCollect(BaseApi):
             r.raise_for_status()
             data = r.json()
         except requests.RequestException as e:
-            print(f"[ApiCollect] poll failed for {rec['prompt_id']}: {e}")
+            logger.warning(f"[ApiCollect] poll failed for {rec['prompt_id']}: {e}")
             return "skip"
         entry = data.get(rec["prompt_id"])
         if not entry:
             return "skip"  # not in history yet -> still running
         status = entry.get("status", {})
         if status.get("status_str") == "error":
-            print(f"[ApiCollect] job {rec['prompt_id']} errored on remote; clearing lock")
+            logger.warning(f"[ApiCollect] job {rec['prompt_id']} errored on remote; clearing lock")
             with _lock_guard:
                 _write_lock(None)
             return "skip"
@@ -775,7 +777,7 @@ class ApiCollect(BaseApi):
         tensor = _extract_images_tensor(client, entry["outputs"], rec.get("output_id") or None)
         with _lock_guard:
             _write_lock(None)
-        print(
+        logger.info(
             f"[ApiCollect] collected job {rec['prompt_id']} "
             f"({tensor.shape[0]} frame(s), label={rec.get('label')!r}); lock freed"
         )
@@ -792,7 +794,7 @@ class ApiCollect(BaseApi):
                 tensor, label = result
                 return (tensor, label)
             if time.time() >= deadline:
-                print("[ApiCollect] nothing to collect; skipping downstream")
+                logger.debug("[ApiCollect] nothing to collect; skipping downstream")
                 blocker = ExecutionBlocker(None)
                 return (blocker, blocker)
             time.sleep(poll_interval)

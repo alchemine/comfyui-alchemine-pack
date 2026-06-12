@@ -27,7 +27,7 @@ import requests
 from .lib.utils import get_logger
 
 
-logger = get_logger()
+logger = get_logger(__file__)
 
 
 # Cache TTL (seconds) for volatile endpoints — popular / related / search,
@@ -105,10 +105,9 @@ class BaseDanbooru:
                 return data
         resp = _get_session().get(url, proxies=cls.get_proxies(), timeout=30)
         if not resp.ok:
-            logger.error(
-                f"Request to {url} failed with status {resp.status_code}: {resp.text}"
-            )
-            raise Exception(f"Request to {url} failed with status {resp.status_code}")
+            msg = f"Request to {url} failed with status {resp.status_code}"
+            logger.error(f"{msg}: {resp.text}")
+            raise Exception(msg)
         data = resp.json()
         cls.REQUEST_CACHE[url] = (None if ttl is None else now + ttl, data)
         return data
@@ -556,7 +555,7 @@ class DanbooruPostsDownloader(BaseDanbooru):
                         f.write(resp.content)
                     logger.info(f"Downloaded {file_url} to {file_path}")
                 except Exception as e:
-                    logger.error(f"Failed to download {file_url}: {e}")
+                    logger.exception(f"Failed to download {file_url}: {e}")
                     continue
 
             file_paths.append(relpath(file_path, output_dir))
@@ -585,4 +584,4 @@ class DanbooruPostsDownloader(BaseDanbooru):
 
 if __name__ == "__main__":
     result = DanbooruPostTagsRetriever.execute(post_id="9557805")
-    print(result)
+    logger.info(result)

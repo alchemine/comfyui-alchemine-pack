@@ -31,19 +31,24 @@ WILDCARD_PATH = RESOURCES_DIR / "wildcards.yaml"
 #################################################################
 # Logger setup
 #################################################################
-def get_logger(name: str = __file__, level: int = logging.WARNING) -> logging.Logger:
+def get_logger(name: str = "comfyui-alchemine-pack", level: int = logging.INFO) -> logging.Logger:
     """Get a logger with a custom formatter that shows the relative path of the file."""
 
     class RootNameFormatter(logging.Formatter):
         def format(self, record):
-            record.name = str(Path(record.name).relative_to(CUSTOM_NODES_DIR))
+            try:
+                record.name = str(Path(record.name).relative_to(CUSTOM_NODES_DIR))
+            except ValueError:
+                # `name` is not a path under custom_nodes (e.g. the default
+                # package name); leave it as-is.
+                pass
             return super().format(record)
 
     logger = logging.getLogger(name)
     logger.handlers.clear()
     handler = logging.StreamHandler()
     formatter = RootNameFormatter(
-        "[%(asctime)s] [%(levelname)s] %(name)s:%(lineno)d: %(message)s"
+        "%(asctime)s | %(levelname)-8s | %(name)s:%(lineno)d: %(message)s"
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)

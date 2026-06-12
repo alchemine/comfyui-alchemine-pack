@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright
 from .lib.utils import get_logger, run_async
 
 
-logger = get_logger()
+logger = get_logger(__file__)
 
 
 #################################################################
@@ -247,12 +247,9 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
                 resp = await api_context.get(url)
                 if not resp.ok:
                     text = await resp.text()
-                    logger.error(
-                        f"Request to {url} failed with status {resp.status}: {text}"
-                    )
-                    raise Exception(
-                        f"Request to {url} failed with status {resp.status}"
-                    )
+                    msg = f"Request to {url} failed with status {resp.status}"
+                    logger.error(f"{msg}: {text}")
+                    raise Exception(msg)
                 json_data = await resp.json()
                 cls.REQUEST_CACHE[url] = json_data
                 responses.append(json_data)
@@ -337,12 +334,9 @@ class DanbooruPostTagsRetriever(BaseDanbooru):
                 resp = await api_context.get(url)
                 if not resp.ok:
                     text = await resp.text()
-                    logger.error(
-                        f"Request to {url} failed with status {resp.status}: {text}"
-                    )
-                    raise Exception(
-                        f"Request to {url} failed with status {resp.status}"
-                    )
+                    msg = f"Request to {url} failed with status {resp.status}"
+                    logger.error(f"{msg}: {text}")
+                    raise Exception(msg)
                 cls.REQUEST_CACHE[url] = await resp.json()
         data = cls.REQUEST_CACHE[url]
 
@@ -515,12 +509,9 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
                 resp = await api_context.get(url)
                 if not resp.ok:
                     text = await resp.text()
-                    logger.error(
-                        f"Request to {url} failed with status {resp.status}: {text}"
-                    )
-                    raise Exception(
-                        f"Request to {url} failed with status {resp.status}"
-                    )
+                    msg = f"Request to {url} failed with status {resp.status}"
+                    logger.error(f"{msg}: {text}")
+                    raise Exception(msg)
                 json_data = await resp.json()
                 cls.REQUEST_CACHE[url] = json_data
                 datas.extend(json_data)
@@ -620,7 +611,7 @@ class DanbooruPostsDownloader(BaseDanbooru):
                             f.write(await resp.body())
                         logger.info(f"Downloaded {file_url} to {file_path}")
                     except Exception as e:
-                        logger.error(f"Failed to download {file_url}: {e}")
+                        logger.exception(f"Failed to download {file_url}: {e}")
                         continue
 
                 file_paths.append(relpath(file_path, output_dir))
@@ -652,12 +643,9 @@ class DanbooruPostsDownloader(BaseDanbooru):
                 resp = await api_context.get(url)
                 if not resp.ok:
                     text = await resp.text()
-                    logger.error(
-                        f"Request to {url} failed with status {resp.status}: {text}"
-                    )
-                    raise Exception(
-                        f"Request to {url} failed with status {resp.status}"
-                    )
+                    msg = f"Request to {url} failed with status {resp.status}"
+                    logger.error(f"{msg}: {text}")
+                    raise Exception(msg)
                 json_data = await resp.json()
                 cls.REQUEST_CACHE[url] = json_data
                 datas.extend(json_data)
@@ -682,4 +670,4 @@ if __name__ == "__main__":
     #     date="", scale="day", n=1, random=False, seed=0
     # ))
     # result = asyncio.run(DanbooruPostsDownloader.aexecute(tags="1girl solo", n=1, dir_path="output"))
-    print(result)
+    logger.info(result)

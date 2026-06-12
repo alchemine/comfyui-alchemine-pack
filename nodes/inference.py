@@ -18,7 +18,7 @@ from PIL import Image
 from .lib.utils import get_logger
 
 
-logger = get_logger()
+logger = get_logger(__file__)
 
 
 CACHE_MAX_SIZE = 10
@@ -266,7 +266,7 @@ class OpenAIInference(BaseInference):
         response.raise_for_status()
         models = [m["id"] for m in response.json()["data"]]
         if len(models) == 1:
-            logger.info(f"Auto-detected model: {models[0]}")
+            logger.debug(f"Auto-detected model: {models[0]}")
             return models[0]
         msg = f"Multiple models available: {models}. Please specify one in the 'model' field."
         logger.error(msg)
@@ -302,4 +302,4 @@ class OpenAIInference(BaseInference):
 
 if __name__ == "__main__":
     text = OpenAIInference.execute(prompt="Hello, how are you?")
-    print(text)
+    logger.info(text)

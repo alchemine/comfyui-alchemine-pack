@@ -10,7 +10,7 @@ import yaml
 from .lib.utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
 
 
-logger = get_logger()
+logger = get_logger(__file__)
 
 
 #################################################################
@@ -980,5 +980,5 @@ if __name__ == "__main__":
         filter_tags=True,
         filter_subtags=True,
     )
-    print(result[0])
-    print(result[1])
+    logger.info(result[0])
+    logger.info(result[1])

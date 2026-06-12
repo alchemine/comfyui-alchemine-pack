@@ -15,7 +15,10 @@ from PIL import Image
 from comfy_api.latest import InputImpl, io as comfy_io, ui as comfy_ui
 from comfy_execution.graph import ExecutionBlocker
 
+from .lib.utils import get_logger
 from .lib import joblock
+
+logger = get_logger(__file__)
 
 # This module's slot in the shared `jobs.lock` (the API nodes use "api").
 _KIND = "grok"
@@ -296,7 +299,7 @@ class GrokGenerate:
         body = _build_body(image, prompt, duration, resolution, model)
         creds = _Credentials.resolve(access_token, refresh_token, client_id)
         path = _run_job(creds, body, out_path, poll_interval, timeout)
-        print(f"[GrokGenerate] 영상 저장 완료: {path}")
+        logger.info(f"[GrokGenerate] video saved: {path}")
 
         # 네이티브 VIDEO 객체 (소리 포함) + 노드에서 바로 인라인 미리보기
         video, preview = _video_ui(path, file, subfolder)
@@ -364,12 +367,12 @@ class GrokSubmit:
             if cur is not None:
                 age = time.time() - cur.get("submitted_at", 0)
                 if age < _STALE_SEC:
-                    print(
+                    logger.debug(
                         f"[GrokSubmit] job already in progress "
                         f"(request_id={cur.get('request_id')}); skipping submit"
                     )
                     return {"ui": {"text": ["(skipped: in progress)"]}, "result": ("",)}
-                print(f"[GrokSubmit] stale lock ({age:.0f}s old); overriding and resubmitting")
+                logger.info(f"[GrokSubmit] stale lock ({age:.0f}s old); overriding and resubmitting")
 
             out_path, file, subfolder = _reserve_output(filename_prefix)
             body = _build_body(image, prompt, duration, resolution, model)
@@ -385,7 +388,7 @@ class GrokSubmit:
                     "submitted_at": time.time(),
                 },
             )
-        print(
+        logger.info(
             f"[GrokSubmit] submitted request_id={request_id} (label={label!r}); "
             "returning immediately"
         )
@@ -447,19 +450,19 @@ class GrokCollect:
         try:
             url = _poll_job(creds, rec["request_id"])
         except RuntimeError as e:
-            print(f"[GrokCollect] job {rec['request_id']} failed on remote; clearing lock: {e}")
+            logger.warning(f"[GrokCollect] job {rec['request_id']} failed on remote; clearing lock: {e}")
             with joblock.guard:
                 joblock.write_lock(_KIND, None)
             return "skip"
         except requests.RequestException as e:
-            print(f"[GrokCollect] poll failed for {rec['request_id']}: {e}")
+            logger.warning(f"[GrokCollect] poll failed for {rec['request_id']}: {e}")
             return "skip"
         if not url:
             return "skip"  # still running
         _download(url, rec["out_path"])
         with joblock.guard:
             joblock.write_lock(_KIND, None)
-        print(
+        logger.info(
             f"[GrokCollect] collected request_id={rec['request_id']} "
             f"-> {rec['out_path']} (label={rec.get('label')!r}); lock freed"
         )
@@ -483,7 +486,7 @@ class GrokCollect:
                 video, preview = _video_ui(out_path, file, subfolder)
                 return {"ui": preview, "result": (video, label)}
             if time.time() >= deadline:
-                print("[GrokCollect] nothing to collect; skipping downstream")
+                logger.debug("[GrokCollect] nothing to collect; skipping downstream")
                 blocker = ExecutionBlocker(None)
                 return (blocker, blocker)
             time.sleep(poll_interval)
@@ -492,4 +495,4 @@ class GrokCollect:
 # 사용 예 (단독 실행용)
 if __name__ == "__main__":
     path = generate_video("start.png", "카메라가 천천히 줌인하며 머리카락이 바람에 흩날린다")
-    print("저장 완료:", path)
+    logger.info(f"saved: {path}")
