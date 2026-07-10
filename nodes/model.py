@@ -121,9 +121,12 @@ class CachedLoraTagLoader(BaseModel):
             if len(pak) > 3 and len(pak[3]) > 0:
                 w_clip = float(pak[3])
 
+            # Path separators differ per OS (`\` on Windows, `/` on Linux), so
+            # normalize both sides to `/` before matching.
+            normalized_name = name.replace("\\", "/")
             lora_name = None
             for lora_file in lora_files:
-                if lora_file.startswith(name):
+                if lora_file.replace("\\", "/").startswith(normalized_name):
                     lora_name = lora_file
                     break
             if lora_name is None:
