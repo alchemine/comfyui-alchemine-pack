@@ -1,0 +1,33 @@
+# User-judged tag pairs for threshold calibration (cos_th/lift_th).
+# Format: verdict<TAB>tag_a<TAB>tag_b   (verdict: conflict | compatible)
+# Judged 2026-07-19. Current thresholds 0.75/0.2 catch all conflicts
+# below except sunlight/dark background (lift 0.45, not separable --
+# see verify session notes; candidate for a manual conflict list).
+conflict	day	dark background
+conflict	sunlight	dark background
+conflict	foot focus	narrow waist
+conflict	from side	anus
+compatible	foot focus	waterfall
+compatible	from below	pond
+compatible	grass	seductive smile
+compatible	kneepits	dark background
+compatible	legs apart	sitting
+compatible	light rays	anus
+compatible	outdoors	dark background
+compatible	pussy	ripples
+compatible	sunbeam	anus
+compatible	pond	waterfall
+compatible	dark background	pond
+compatible	wet hair	pink eyes
+compatible	smug	pink eyes
+compatible	night	bikini
+conflict	all fours	sitting
+conflict	standing	sitting
+conflict	wading	sitting
+conflict	loli	breasts apart
+compatible	spread arms	sitting
+# NOTE: wading/sitting (conflict) vs spread arms/sitting (compatible) are
+# statistical twins on every axis tried (cos/lift/count-ratio/entropy/
+# exclusion-Jaccard/bridge/conditional-lift) -- separating them needs
+# knowledge beyond co-occurrence. Open problem; user prefers a
+# non-LLM solution, TBD.

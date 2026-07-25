@@ -1,7 +1,9 @@
 __pycache__/
 .pytest_cache/
+
 .vscode/
-playground/
 .env
-.claude/
+
+playground/
 jobs.lock
+nodes/resources/tag_cooc.npz

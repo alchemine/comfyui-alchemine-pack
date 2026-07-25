@@ -24,6 +24,8 @@ from .nodes.prompt import (
     SDXLAutoBreak,
     SubstituteTags,
     SeparateLoraTags,
+    ConsistencyGuard,
+    ClassifyTags,
 )
 
 
@@ -64,6 +66,8 @@ NODE_CLASS_MAPPINGS = {
     "SDXLAutoBreak": SDXLAutoBreak,
     "SubstituteTags": SubstituteTags,
     "SeparateLoraTags": SeparateLoraTags,
+    "ConsistencyGuard": ConsistencyGuard,
+    "ClassifyTags": ClassifyTags,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -104,4 +108,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SDXLAutoBreak": "SDXL Auto Break",
     "SubstituteTags": "Substitute Tags",
     "SeparateLoraTags": "Separate Lora Tags",
+    "ConsistencyGuard": "Consistency Guard",
+    "ClassifyTags": "Classify Tags",
 }

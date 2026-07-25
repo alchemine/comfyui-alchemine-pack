@@ -8,6 +8,13 @@ from functools import wraps
 import yaml
 
 from .lib.utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
+from .lib.tag_guard import (
+    filter_generated,
+    filter_by_conflicts,
+    cooc_available,
+    CATEGORY_NAMES,
+)
+from .lib.tag_classify import BUCKETS, classify_tags
 
 
 logger = get_logger(__file__)
@@ -960,6 +967,142 @@ class SeparateLoraTags(BasePrompt):
         text_without_lora = re.sub(r",\s*$", "", text_without_lora)
 
         return (text_without_lora, text_with_lora)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
+
+class ConsistencyGuard(BasePrompt):
+    """Remove tags conflicting with fixed tags (or with earlier tags in the text).
+
+    Data-driven: a tag conflicts with a reference tag when they are the
+    same kind of tag (Danbooru co-occurrence profile cosine >= cosine_threshold)
+    but avoid each other on posts (co-occurrence lift below a bar that
+    rises exponentially with cosine: lift_threshold at cosine_threshold up
+    to 2x at cos 1.0, 2.5x for clothes-vs-clothes pairs; lift =
+    observed/expected co-occurrence, 1.0 = chance level).
+    Example: 'dress' vs 'bikini' conflicts, 'waterfall' vs 'pond' does not,
+    'night' vs 'day' conflicts even though no category list mentions them.
+
+    Falls back to static category rules (tag_data.py) when the precomputed
+    co-occurrence table (tag_cooc.npz) is missing.
+
+    Examples:
+        Input: text="bikini, waterfall, pond, dress, day, night", fixed_tags="bikini, waterfall, day"
+        Output: ("bikini, waterfall, pond, day", "dress (vs bikini), night (vs day)")
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+            "category": (["all"] + list(BUCKETS),),
+            "cosine_threshold": (
+                "FLOAT",
+                {"default": 0.75, "min": 0.0, "max": 1.0, "step": 0.01},
+            ),
+            "lift_threshold": (
+                "FLOAT",
+                {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.01},
+            ),
+        },
+        "optional": {
+            "fixed_tags": ("STRING", {"default": ""}),
+        },
+    }
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("processed_text", "table")
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(
+        cls,
+        text: str,
+        category: str = "all",
+        cosine_threshold: float = 0.75,
+        lift_threshold: float = 0.2,
+        fixed_tags: str = "",
+    ) -> tuple[str, str]:
+        """Remove tags conflicting with fixed tags from a prompt."""
+        if cooc_available():
+            processed_text, filtered_tags = filter_by_conflicts(
+                text,
+                locked_prompt=fixed_tags,
+                cos_th=cosine_threshold,
+                lift_th=lift_threshold,
+                restrict_category=None if category == "all" else category,
+            )
+        else:
+            logger.warning(
+                "[ConsistencyGuard] tag_cooc.npz not found; "
+                "falling back to static category rules"
+            )
+            # wiki bucket -> static categories the fallback can enforce
+            bucket_static = {
+                "clothes": ("clothes",),
+                "pose": ("pose",),
+                "expression": ("expression", "eye_color"),
+                "body": ("hair_length", "hair_style", "hair_color"),
+                "background": ("background",),
+            }
+            if category == "all":
+                modes = {c: "auto" for c in CATEGORY_NAMES}
+            else:
+                active = bucket_static.get(category, ())
+                modes = {
+                    c: ("auto" if c in active else "off") for c in CATEGORY_NAMES
+                }
+            processed_text, filtered_tags = filter_generated(
+                text,
+                locked_prompt=fixed_tags,
+                modes=modes,
+                clothes_strict=False,
+            )
+        return (processed_text, filtered_tags)
+
+    @classmethod
+    def IS_CHANGED(
+        cls,
+        text: str,
+        category: str = "all",
+        cosine_threshold: float = 0.75,
+        lift_threshold: float = 0.2,
+        fixed_tags: str = "",
+    ) -> tuple:
+        return (text, category, cosine_threshold, lift_threshold, fixed_tags)
+
+
+class ClassifyTags(BasePrompt):
+    """Split prompt tags into coarse category outputs.
+
+    Uses the Danbooru wiki tag-group mapping (tag_groups.json, 45% of the
+    co-occurrence vocabulary) plus the static tag_data tables as fallback;
+    tags matching neither go to "others".
+
+    Examples:
+        Input: text="1boy, serafuku, sitting, smile, classroom"
+        Output: characters="1boy", clothes="serafuku", pose="sitting",
+                expression="smile", background="classroom", ...
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        },
+    }
+    RETURN_TYPES = ("STRING",) * len(BUCKETS)
+    RETURN_NAMES = BUCKETS
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    def execute(cls, text: str) -> tuple:
+        """Classify tags into buckets and return one string per bucket."""
+        buckets = classify_tags(text)
+        return tuple(", ".join(buckets[b]) for b in BUCKETS)
 
     @classmethod
     def IS_CHANGED(cls, text: str) -> tuple:
