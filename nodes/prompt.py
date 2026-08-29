@@ -1068,8 +1068,17 @@ class TagGenerator(BasePrompt):
 
     temperature 0 = deterministic argmax; above 0, the usual sampling
     filters apply (top_k / top_p / min_p, applied in that order), and
-    seed makes the draw reproducible. min_count drops rare tags
-    (character-specific noise) from candidates.
+    seed makes the draw reproducible.
+
+    min_count drops rare tags from the candidates, counted within the
+    requested rating tier rather than over the whole corpus, so asking
+    for a milder rating also shrinks the pool. It defaults to the
+    vocabulary floor, i.e. no filtering: three other mechanisms already
+    hold rare tags back -- a candidate needs positive attraction from
+    the prompt, log P(tag) penalises rare tags heavily, and the stored
+    lift is smoothed so a pair seen once cannot look like a strong
+    association. Raise it if a particular prompt keeps surfacing tags
+    too obscure for your model to have learned.
 
     categories restricts which knobs the output may turn, using the
     names in resources/group/categories_v1.0.json: characters,
@@ -1130,7 +1139,7 @@ class TagGenerator(BasePrompt):
             ),
             "min_count": (
                 "INT",
-                {"default": 5000, "min": 1000, "max": 1000000, "step": 1000},
+                {"default": 100, "min": 100, "max": 1000000, "step": 100},
             ),
         },
         "optional": {
