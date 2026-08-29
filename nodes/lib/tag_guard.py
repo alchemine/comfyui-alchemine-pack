@@ -7,11 +7,13 @@ import os
 import re
 
 try:
+    from . import artifact
     from .tag_data import (
         CLOTHES, CLOTHES_CONFLICTS, CATEGORIES, ACCESSORIES,
         PATTERNS, PATTERN_EXCEPTIONS,
     )
 except ImportError:
+    import artifact
     from tag_data import (
         CLOTHES, CLOTHES_CONFLICTS, CATEGORIES, ACCESSORIES,
         PATTERNS, PATTERN_EXCEPTIONS,
@@ -112,24 +114,6 @@ _COOC_URL = ("https://github.com/alchemine/comfyui-alchemine-pack"
 _COOC_SHA256 = "1ce3c2a76d2e0527f4b193fb190a794ad60e4e36005a9cceac4d5f6ab60e6e91"
 
 
-def _download_cooc():
-    """Fetch tag_cooc.npz from the release, verify, move into place."""
-    import hashlib
-    import urllib.request
-    print("[tag_guard] downloading tag_cooc.npz (26MB) from %s" % _COOC_URL)
-    tmp = _COOC_PATH + ".part"
-    urllib.request.urlretrieve(_COOC_URL, tmp)
-    h = hashlib.sha256()
-    with open(tmp, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    if h.hexdigest() != _COOC_SHA256:
-        os.remove(tmp)
-        raise RuntimeError("tag_cooc.npz checksum mismatch (corrupt download?)")
-    os.replace(tmp, _COOC_PATH)
-    print("[tag_guard] tag_cooc.npz ready")
-
-
 def _load_cooc():
     """Load the precomputed neighbor table (see precompute_conflicts.py).
 
@@ -143,8 +127,8 @@ def _load_cooc():
     if _COOC is None:
         try:
             import numpy as np
-            if not os.path.exists(_COOC_PATH):
-                _download_cooc()
+            artifact.ensure(_COOC_PATH, _COOC_URL, _COOC_SHA256,
+                            "tag_guard", "26MB")
             data = np.load(_COOC_PATH)
             tags = data["tags"].tolist()
             _COOC = {

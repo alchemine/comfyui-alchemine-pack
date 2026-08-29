@@ -1,0 +1,91 @@
+{
+  "description": "User-facing primary categories for TagGenerator sampling. Each category lists hierarchy_v1.0 node names; a category owns every tag whose group falls in any listed node's subtree. A tag whose groups span several categories goes to whichever category most of its groups point at, with 'priority' order breaking ties -- majority rather than strict priority because wiki membership is noisy ('beach' is filed under locations, water and swimsuit). Explicitness is not decided here: see ratings_v1.0.json. Built for tags_v1.0.json + hierarchy_v1.0.json.",
+  "priority": [
+    "characters",
+    "expressions",
+    "pose",
+    "clothes",
+    "background",
+    "compositions",
+    "body",
+    "objects",
+    "creatures",
+    "etc"
+  ],
+  "categories": {
+    "characters": [
+      "character count",
+      "groups",
+      "people",
+      "family relationships",
+      "relative traits"
+    ],
+    "expressions": [
+      "face tags",
+      "eyes tags",
+      "eyebrows",
+      "nose"
+    ],
+    "pose": [
+      "posture",
+      "gestures",
+      "hands",
+      "feet",
+      "covering",
+      "dances",
+      "verbs and gerunds",
+      "on (object)",
+      "holding tags",
+      "sex acts",
+      "sexual positions",
+      "simulated sex acts",
+      "bdsm and torture"
+    ],
+    "clothes": [
+      "attire and body accessories",
+      "jobs"
+    ],
+    "background": [
+      "backgrounds",
+      "locations",
+      "real world locations",
+      "lighting",
+      "water",
+      "fire",
+      "plants",
+      "doors and gates",
+      "holidays and celebrations",
+      "effects and magic"
+    ],
+    "compositions": [
+      "image composition and style"
+    ],
+    "body": [
+      "body"
+    ],
+    "objects": [
+      "objects",
+      "food tags",
+      "technology",
+      "board games",
+      "sports",
+      "video game"
+    ],
+    "creatures": [
+      "creatures"
+    ],
+    "etc": []
+  },
+  "nsfw_groups": [
+    "sex acts",
+    "simulated sex acts",
+    "sexual positions",
+    "bdsm and torture",
+    "sexual attire",
+    "nudity",
+    "pussy",
+    "penis",
+    "sex objects",
+    "censorship"
+  ]
+}

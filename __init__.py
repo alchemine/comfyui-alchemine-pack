@@ -25,6 +25,7 @@ from .nodes.prompt import (
     SubstituteTags,
     SeparateLoraTags,
     ConsistencyGuard,
+    TagGenerator,
     ClassifyTags,
 )
 
@@ -67,6 +68,7 @@ NODE_CLASS_MAPPINGS = {
     "SubstituteTags": SubstituteTags,
     "SeparateLoraTags": SeparateLoraTags,
     "ConsistencyGuard": ConsistencyGuard,
+    "TagGenerator": TagGenerator,
     "ClassifyTags": ClassifyTags,
 }
 
@@ -109,5 +111,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SubstituteTags": "Substitute Tags",
     "SeparateLoraTags": "Separate Lora Tags",
     "ConsistencyGuard": "Consistency Guard",
+    "TagGenerator": "Tag Generator",
     "ClassifyTags": "Classify Tags",
 }

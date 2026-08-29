@@ -10,10 +10,10 @@ import yaml
 from .lib.utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
 from .lib.tag_guard import (
     filter_generated,
-    filter_by_conflicts,
-    cooc_available,
     CATEGORY_NAMES,
 )
+from .lib.tag_veto import filter_by_veto, veto_available
+from .lib.tag_suggest import suggest_tags, suggest_available
 from .lib.tag_classify import BUCKETS, classify_tags
 
 
@@ -972,37 +972,39 @@ class SeparateLoraTags(BasePrompt):
     def IS_CHANGED(cls, text: str) -> tuple:
         return (text,)
 
+
 class ConsistencyGuard(BasePrompt):
-    """Remove tags conflicting with fixed tags (or with earlier tags in the text).
+    """Remove tags contradicting fixed tags (or earlier tags in the text).
 
-    Data-driven: a tag conflicts with a reference tag when they are the
-    same kind of tag (Danbooru co-occurrence profile cosine >= cosine_threshold)
-    but avoid each other on posts (co-occurrence lift below a bar that
-    rises exponentially with cosine: lift_threshold at cosine_threshold up
-    to 2x at cos 1.0, 2.5x for clothes-vs-clothes pairs; lift =
-    observed/expected co-occurrence, 1.0 = chance level).
-    Example: 'dress' vs 'bikini' conflicts, 'waterfall' vs 'pond' does not,
-    'night' vs 'day' conflicts even though no category list mentions them.
+    Veto layer over a tag generator: which tag is *best* is subjective,
+    which tag is *impossible* is not. A tag is vetoed when its co-occurrence
+    lift (observed / expected on 5.48M Danbooru solo posts) with some
+    reference tag falls below lift_threshold, with expected co-occurrence
+    >= 15 so an observed 0 is evidence, not chance. Composition tags
+    (2girls, yuri, ...) are judged on the unfiltered corpus, and
+    character-count/gender tags are only ever compared with each other.
+    Fixed tags are assumed consistent and always kept; surviving generated
+    tags immediately become references, so two mutually contradictory
+    suggestions cannot both pass.
 
-    Falls back to static category rules (tag_data.py) when the precomputed
-    co-occurrence table (tag_cooc.npz) is missing.
+    lift_threshold is the filter's only tuned parameter (labeled pairs
+    place the contradiction boundary in the 0.098-0.142 gap; raising it
+    past ~0.13 starts vetoing compatible pairs).
+
+    Falls back to static category rules (tag_data.py) when the veto
+    artifact (tag_veto.npz) is missing.
 
     Examples:
         Input: text="bikini, waterfall, pond, dress, day, night", fixed_tags="bikini, waterfall, day"
-        Output: ("bikini, waterfall, pond, day", "dress (vs bikini), night (vs day)")
+        Output: ("bikini, waterfall, pond, day", <judgment table>)
     """
 
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
-            "category": (["all"] + list(BUCKETS),),
-            "cosine_threshold": (
-                "FLOAT",
-                {"default": 0.75, "min": 0.0, "max": 1.0, "step": 0.01},
-            ),
             "lift_threshold": (
                 "FLOAT",
-                {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.01},
+                {"default": 0.1, "min": 0.0, "max": 0.5, "step": 0.01},
             ),
         },
         "optional": {
@@ -1020,44 +1022,25 @@ class ConsistencyGuard(BasePrompt):
     def execute(
         cls,
         text: str,
-        category: str = "all",
-        cosine_threshold: float = 0.75,
-        lift_threshold: float = 0.2,
+        lift_threshold: float = 0.1,
         fixed_tags: str = "",
     ) -> tuple[str, str]:
-        """Remove tags conflicting with fixed tags from a prompt."""
-        if cooc_available():
-            processed_text, filtered_tags = filter_by_conflicts(
+        """Remove tags contradicting fixed tags from a prompt."""
+        if veto_available():
+            processed_text, filtered_tags = filter_by_veto(
                 text,
-                locked_prompt=fixed_tags,
-                cos_th=cosine_threshold,
+                fixed_prompt=fixed_tags,
                 lift_th=lift_threshold,
-                restrict_category=None if category == "all" else category,
             )
         else:
             logger.warning(
-                "[ConsistencyGuard] tag_cooc.npz not found; "
+                "[ConsistencyGuard] tag_veto.npz not found; "
                 "falling back to static category rules"
             )
-            # wiki bucket -> static categories the fallback can enforce
-            bucket_static = {
-                "clothes": ("clothes",),
-                "pose": ("pose",),
-                "expression": ("expression", "eye_color"),
-                "body": ("hair_length", "hair_style", "hair_color"),
-                "background": ("background",),
-            }
-            if category == "all":
-                modes = {c: "auto" for c in CATEGORY_NAMES}
-            else:
-                active = bucket_static.get(category, ())
-                modes = {
-                    c: ("auto" if c in active else "off") for c in CATEGORY_NAMES
-                }
             processed_text, filtered_tags = filter_generated(
                 text,
                 locked_prompt=fixed_tags,
-                modes=modes,
+                modes={c: "auto" for c in CATEGORY_NAMES},
                 clothes_strict=False,
             )
         return (processed_text, filtered_tags)
@@ -1066,12 +1049,147 @@ class ConsistencyGuard(BasePrompt):
     def IS_CHANGED(
         cls,
         text: str,
-        category: str = "all",
-        cosine_threshold: float = 0.75,
-        lift_threshold: float = 0.2,
+        lift_threshold: float = 0.1,
         fixed_tags: str = "",
     ) -> tuple:
-        return (text, category, cosine_threshold, lift_threshold, fixed_tags)
+        return (text, lift_threshold, fixed_tags)
+
+
+class TagGenerator(BasePrompt):
+    """Generate tags that usually accompany the input tags.
+
+    The other direction of ConsistencyGuard's statistic: lift far below 1
+    means two tags avoid each other (veto), lift far above 1 means they
+    attract. Tags are generated one per step, LM-style: the step
+    distribution is naive Bayes over Danbooru solo-post co-occurrence
+    (log P(tag) + sum of log lift against every context tag), each pick
+    joins the context and re-conditions the next step, and vetoed
+    candidates are masked so the output cannot contradict itself.
+
+    temperature 0 = deterministic argmax; above 0, the usual sampling
+    filters apply (top_k / top_p / min_p, applied in that order), and
+    seed makes the draw reproducible. min_count drops rare tags
+    (character-specific noise) from candidates.
+
+    categories restricts which knobs the output may turn, using the
+    names in resources/group/categories_v1.0.json: characters,
+    expressions, pose, clothes, background, compositions, body, objects,
+    creatures, etc. "pose, clothes" allows only those two; adding counts
+    ("expressions:2, pose:3, background:3") also caps each one, and with
+    tag_count 0 those caps become the target length -- the way to get a
+    balanced prompt instead of whatever the statistics happen to favour.
+
+    rating caps explicitness on both sides: the statistics come from the
+    matching corpus slice, and tags whose own rating level exceeds the
+    request are masked, so "general" cannot surface a tag Danbooru only
+    applies to racier art.
+
+    tag_count 0 = auto length: a target tag count is drawn from the
+    Danbooru solo-post length distribution (median 31 general tags), and
+    generation also stops early when no candidate is at least twice as
+    likely as chance given the context -- the data has nothing left to say.
+
+    rating caps the exposure level of the statistics themselves: the
+    co-occurrence tables are built per cumulative rating tier (general <
+    sensitive < questionable < explicit, each including the tiers below),
+    so at rating "general" the sampler has never seen the associations
+    that only exist in racier posts and cannot drift toward them.
+
+    Examples:
+        Input: text="night, city, rain", tag_count=5, temperature=0.0
+        Output: ("night, city, rain, cityscape, building, night sky, scenery, road",
+                 "cityscape, building, night sky, scenery, road")
+        Input: text="1girl, beach", tag_count=0, categories="clothes:2, pose:2"
+        Output: (..., "swimsuit, bikini, holding swim ring, holding beachball")
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+            "tag_count": ("INT", {"default": 10, "min": 0, "max": 100}),
+            "rating": (
+                ["general", "sensitive", "questionable", "explicit"],
+                {"default": "explicit"},
+            ),
+            "temperature": (
+                "FLOAT",
+                {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.05},
+            ),
+            "top_k": ("INT", {"default": 50, "min": 0, "max": 500}),
+            "top_p": (
+                "FLOAT",
+                {"default": 0.95, "min": 0.0, "max": 1.0, "step": 0.01},
+            ),
+            "min_p": (
+                "FLOAT",
+                {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01},
+            ),
+            "seed": (
+                "INT",
+                {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF},
+            ),
+            "min_count": (
+                "INT",
+                {"default": 5000, "min": 1000, "max": 1000000, "step": 1000},
+            ),
+        },
+        "optional": {
+            "categories": ("STRING", {"default": "", "multiline": False}),
+        },
+    }
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("processed_text", "generated_tags")
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(
+        cls,
+        text: str,
+        tag_count: int = 10,
+        rating: str = "explicit",
+        temperature: float = 1.0,
+        top_k: int = 50,
+        top_p: float = 0.95,
+        min_p: float = 0.0,
+        seed: int = 0,
+        min_count: int = 5000,
+        categories: str = "",
+    ) -> tuple[str, str]:
+        """Append companion tags to a prompt."""
+        rating = rating[0]  # danbooru letter form: g/s/q/e
+        if not suggest_available():
+            logger.warning(
+                "[TagGenerator] suggest artifact not found; passing through"
+            )
+            return (text, "")
+        generated = suggest_tags(
+            text, tag_count=tag_count, min_count=min_count,
+            temperature=temperature, top_k=top_k, top_p=top_p,
+            min_p=min_p, seed=seed, rating=rating, categories=categories,
+        )
+        generated_str = ", ".join(generated)
+        processed = f"{text.strip().rstrip(',')}, {generated_str}" if generated else text
+        return (processed, generated_str)
+
+    @classmethod
+    def IS_CHANGED(
+        cls,
+        text: str,
+        tag_count: int = 10,
+        rating: str = "explicit",
+        temperature: float = 1.0,
+        top_k: int = 50,
+        top_p: float = 0.95,
+        min_p: float = 0.0,
+        seed: int = 0,
+        min_count: int = 5000,
+        categories: str = "",
+    ) -> tuple:
+        return (text, tag_count, rating, temperature, top_k, top_p, min_p,
+                seed, min_count, categories)
 
 
 class ClassifyTags(BasePrompt):

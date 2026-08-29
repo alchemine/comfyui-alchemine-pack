@@ -6,4 +6,4 @@ __pycache__/
 
 playground/
 jobs.lock
-nodes/resources/tag_cooc.npz
+nodes/resources/*.npz

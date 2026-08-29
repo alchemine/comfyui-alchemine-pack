@@ -29,6 +29,9 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **SDXLAutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens (SDXL only). |
 | **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
 | **SeparateLoraTags** | Separates lora tags (`<lora:...>`) from a prompt. If the same lora appears multiple times, the last weight is used. |
+| **TagGenerator** | Extends a prompt with tags that go with it, sampled from Danbooru co-occurrence. `categories` picks which axes may contribute and how many (`"pose:2, clothes:3"`); `rating` caps explicitness. |
+| **ConsistencyGuard** | Drops generated tags that contradict the fixed ones, judged by co-occurrence lift rather than a hand-written conflict list. |
+| **ClassifyTags** | Splits a prompt into coarse buckets (characters, clothes, body, expression, pose, background, objects, nsfw, others). |
 
 #### ProcessTags
 
