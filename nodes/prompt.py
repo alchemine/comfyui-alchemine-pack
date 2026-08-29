@@ -1195,9 +1195,12 @@ class TagGenerator(BasePrompt):
 class ClassifyTags(BasePrompt):
     """Split prompt tags into coarse category outputs.
 
-    Uses the Danbooru wiki tag-group mapping (tag_groups.json, 45% of the
-    co-occurrence vocabulary) plus the static tag_data tables as fallback;
-    tags matching neither go to "others".
+    Buckets come from the same labels TagGenerator samples with
+    (resources/group/): the tag's category picks the bucket, and its
+    rating level sends questionable and explicit tags to "nsfw"
+    instead. Tags the labels do not cover -- about 3% of the
+    vocabulary, and well under 1% of real prompt tags by frequency --
+    fall back to the static tag_data tables, then to "others".
 
     Examples:
         Input: text="1boy, serafuku, sitting, smile, classroom"

@@ -25,6 +25,12 @@ from .tag_veto import normalize, DEFAULT_LIFT_TH
 DEFAULT_MIN_COUNT = 5000
 _MIN_REPEL_LIFT = 1e-6               # keeps log() finite on stored zeros
 
+# must match build_suggest.py: stored repulsion lift is smoothed as
+# (observed + ALPHA) / (expected + ALPHA), which is invertible given the
+# tag counts, so the raw ratio TagVeto thresholds on can be recovered.
+_SMOOTHING = 5.0
+_MIN_EXPECTED = 15.0
+
 # auto-length EOS: stop when no candidate is at least this much more
 # likely than chance given the context (combined lift >= 2)
 _EOS_LOG_LIFT = 0.6931471805599453   # ln(2)
@@ -67,6 +73,8 @@ class TagSuggest:
                     "ids": data[f"nbr_ids_{r}"],
                     "lift": data[f"nbr_lift_{r}"].astype(np.float32),
                     "len_hist": data[f"len_hist_{r}"].astype(np.float64),
+                    "posts": (float(data[f"posts_{r}"])
+                              if f"posts_{r}" in data else 0.0),
                     "neg_ids": neg_ids,
                     "neg_lift": neg_lift,
                 }
@@ -115,6 +123,35 @@ class TagSuggest:
             repel[neg_ids[real]] += np.log(
                 np.maximum(tier["neg_lift"][i][real], _MIN_REPEL_LIFT))
         return attract, repel
+
+    def _repel_veto(self, ids, tier, lift_th):
+        """Tags that avoid the given context strongly enough to ban.
+
+        TagVeto only knows 8,320 of the 20,811 tags, so on its own it
+        leaves most of the vocabulary unchecked. The repulsion table
+        covers all of it: undo the smoothing to recover the raw
+        observed/expected ratio and apply the same rule TagVeto does --
+        ban when the corpus expected the pair often (>= 15) and it still
+        barely happened.
+        """
+        np = self._np
+        banned = np.zeros(len(self.vocab), dtype=bool)
+        if tier["neg_ids"] is None or not tier["posts"]:
+            return banned
+        counts = tier["counts"].astype(np.float64)
+        for i in ids:
+            neighbours = tier["neg_ids"][i]
+            real = neighbours >= 0
+            j = neighbours[real]
+            if not len(j):
+                continue
+            smoothed = tier["neg_lift"][i][real].astype(np.float64)
+            expected = counts[i] * counts[j] / tier["posts"]
+            observed = smoothed * (expected + _SMOOTHING) - _SMOOTHING
+            with np.errstate(divide="ignore", invalid="ignore"):
+                raw = np.where(expected > 0, observed / expected, 1.0)
+            banned[j[(expected >= _MIN_EXPECTED) & (raw < lift_th)]] = True
+        return banned
 
     def suggest(self, inputs, m=10, min_count=DEFAULT_MIN_COUNT,
                 lift_th=DEFAULT_LIFT_TH, temperature=0.0,
@@ -187,10 +224,11 @@ class TagSuggest:
 
         chosen, refs = [], [t for t in tags if t]
         blocked = set(refs)
+        vetoed = self._repel_veto(ids, tier, lift_th)
         for _ in range(m):
             logits = log_prior + log_lift + log_repel
             # candidates: some attraction, allowed, not used, not vetoed
-            ok = (log_lift > 0) & eligible
+            ok = (log_lift > 0) & eligible & ~vetoed
             if quota and cat_of is not None:
                 spent = [r for r, cap in quota.items()
                          if used.get(r, 0) >= cap]
@@ -218,6 +256,7 @@ class TagSuggest:
             gain, loss = self._log_lift_sum([j], tier)   # re-condition
             log_lift += gain
             log_repel += loss
+            vetoed |= self._repel_veto([j], tier, lift_th)
         return chosen
 
     def _draw_length(self, rng, tier):

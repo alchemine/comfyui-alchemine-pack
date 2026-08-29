@@ -91,10 +91,21 @@ class Labels:
         best = max(votes.values())
         return min(rank for rank, n in votes.items() if n == best)
 
-    def rating_of(self, tag):
-        """Rating level index; unknown tags are treated as explicit."""
+    def rating_of(self, tag, default=3):
+        """Rating level index, `default` when the tag has no label.
+
+        Callers that mask by rating want the cautious default (explicit,
+        so an unlabelled tag cannot slip into a mild request); callers
+        that only describe a tag want the permissive one.
+        """
         level = self._ratings.get(normalize(tag))
-        return RATING_ORDER.index(level) if level in RATING_ORDER else 3
+        return RATING_ORDER.index(level) if level in RATING_ORDER else default
+
+    def category_name(self, tag):
+        return self.names[self.category_of(tag)]
+
+    def knows(self, tag):
+        return normalize(tag) in self._groups
 
     def arrays(self, vocab):
         """(category index, rating level) arrays aligned to `vocab`."""
