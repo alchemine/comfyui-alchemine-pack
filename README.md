@@ -32,6 +32,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **TagGenerator** | Extends a prompt with tags that go with it, sampled from Danbooru co-occurrence. `categories` picks which axes may contribute and how many (`"pose:2, clothes:3"`); `rating` caps explicitness. |
 | **ConsistencyGuard** | Drops generated tags that contradict the fixed ones, judged by co-occurrence lift rather than a hand-written conflict list. |
 | **ClassifyTags** | Splits a prompt into coarse buckets (characters, clothes, body, expression, pose, background, objects, nsfw, others). |
+| **TextPrompt** | Plain multiline text input with `dynamicPrompts` off, so typing `{a|b}` no longer jumps the cursor to the end. Wildcards are expanded in Python instead. |
 
 #### ProcessTags
 
@@ -123,6 +124,57 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 |--------|-------------|
 | `text_without_lora` | Text with all lora tags removed (whitespace/newlines preserved as much as possible) |
 | `text_with_lora` | Deduplicated lora tags joined by spaces (when the same lora appears multiple times, the last weight wins) |
+
+#### TextPrompt
+
+ComfyUI's built-in text widget has `dynamicPrompts` enabled, which re-parses
+the field as you type: writing `{a|b}` moves the cursor to the end on every
+keystroke. This node turns the flag off, so the widget behaves like a plain
+text box, and resolves the `{option1|option2|...}` syntax in Python at
+execution time instead (one random pick per group, nesting supported).
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Multiline prompt text; `{a|b}` groups are expanded on execution |
+| `seed` | INT | 0 | Input-only; seeds the wildcard picks so a run is reproducible |
+
+| Output | Description |
+|--------|-------------|
+| `text` | Prompt with every wildcard group resolved |
+
+---
+
+### Image Nodes (`AlcheminePack/Image`)
+
+#### AdjustImage
+
+Colour correction, a suite of sharpen/denoise filters and optional resizing in
+one node. Every knob defaults to a no-op, so the node passes the image through
+untouched until a slider is moved. All adjustments are torch ops running on the
+image's own device, so a GPU tensor never round-trips through numpy; RGB is
+processed and an existing alpha channel is passed through untouched.
+
+The order is fixed and deliberate: brightness → contrast → saturation → gamma →
+denoise → edge enhance → CAS → local contrast → resize. Denoise runs before any
+sharpening so the sharpeners do not amplify the noise they were meant to remove.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `image` | IMAGE | (required) | Input image |
+| `brightness` | FLOAT | 1.0 | 1.0 = no change, <1.0 darker, >1.0 brighter |
+| `contrast` | FLOAT | 1.0 | Scales around mid-gray 0.5 |
+| `saturation` | FLOAT | 1.0 | 0.0 = grayscale, >1.0 = more vivid |
+| `gamma` | FLOAT | 1.0 | <1.0 brightens mid-tones, >1.0 darkens them |
+| `edge_enhance` | FLOAT | 0.0 | Blend factor for a fixed edge-enhance kernel |
+| `cas` | FLOAT | 0.0 | Contrast Adaptive Sharpening (AMD FidelityFX). Sharpens flat regions more and already-sharp edges less, so it avoids crunchy line art |
+| `local_contrast` | FLOAT | 0.0 | Large-radius unsharp ("clarity"); adds mid-scale depth |
+| `denoise` | FLOAT | 0.0 | Edge-preserving bilateral filter; removes flat noise and banding while keeping lines |
+| `upscale_method` | COMBO | lanczos | Resampling used when `scale_by` != 1.0 |
+| `scale_by` | FLOAT | 1.0 | Scale factor; 1.0 = no resize |
+
+| Output | Description |
+|--------|-------------|
+| `image` | Adjusted image |
 
 ---
 

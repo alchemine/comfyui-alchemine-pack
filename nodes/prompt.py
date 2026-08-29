@@ -377,9 +377,25 @@ class FilterTags(BasePrompt):
                 blacklist_tags = re.sub(
                     f"__{key}__", f"({'|'.join(values)})", blacklist_tags
                 )
-        compiled_blacklist = re.compile(
-            r"|".join([t.strip() for t in blacklist_tags.split(",")])
-        )
+        blacklist_tokens = [t.strip() for t in blacklist_tags.split(",") if t.strip()]
+        if blacklist_tokens:
+            # Each token is treated as a regex (e.g. "tan$", "^solo$", "\b").
+            # If a token is not a valid regex, warn and fall back to a literal match
+            # for that token only, so one bad token doesn't break the whole blacklist.
+            patterns = []
+            for t in blacklist_tokens:
+                try:
+                    re.compile(t)
+                    patterns.append(t)
+                except re.error as e:
+                    logger.warning(
+                        f"Invalid regex in blacklist token {t!r}: {e}. "
+                        f"Falling back to literal match."
+                    )
+                    patterns.append(re.escape(t))
+            compiled_blacklist = re.compile("|".join(patterns))
+        else:
+            compiled_blacklist = re.compile(r"(?!)")
 
         # 3. Filter tags from blacklist from each group
         filtered_tag_list = []
@@ -1261,6 +1277,51 @@ class ClassifyTags(BasePrompt):
     @classmethod
     def IS_CHANGED(cls, text: str) -> tuple:
         return (text,)
+
+
+class TextPrompt(BasePrompt):
+    """Plain text input node without dynamicPrompts, so {a|b} syntax doesn't
+    cause the cursor to jump to the end while typing.
+
+    The {option1|option2|...} wildcard expansion is resolved on the Python side
+    at execution time (random pick per group, supports nesting).
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"multiline": True, "dynamicPrompts": False}),
+        },
+        "optional": {
+            "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "forceInput": True}),
+        },
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    def execute(cls, text: str, seed: int = 0) -> tuple:
+        import random as _random
+        rng = _random.Random(seed)
+
+        def _resolve(s: str) -> str:
+            # Iteratively expand innermost {a|b|c} groups until none remain.
+            pattern = re.compile(r"\{([^{}]*)\}")
+            while True:
+                m = pattern.search(s)
+                if not m:
+                    break
+                options = m.group(1).split("|")
+                s = s[: m.start()] + rng.choice(options) + s[m.end() :]
+            return s
+
+        return (_resolve(text),)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str, seed: int = 0) -> tuple:
+        return (text, seed)
 
 
 if __name__ == "__main__":

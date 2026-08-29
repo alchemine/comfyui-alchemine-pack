@@ -8,6 +8,7 @@ from .nodes.danbooru_requests import (
 )
 from .nodes.flow_control import LazyExecution
 from .nodes.grok import GrokGenerate, GrokSubmit, GrokCollect
+from .nodes.image import AdjustImage
 from .nodes.inference import OpenAIInference
 from .nodes.evaluate import Evaluate
 from .nodes.lora import DownloadImage, SaveImageWithText
@@ -27,6 +28,7 @@ from .nodes.prompt import (
     ConsistencyGuard,
     TagGenerator,
     ClassifyTags,
+    TextPrompt,
 )
 
 
@@ -42,6 +44,8 @@ NODE_CLASS_MAPPINGS = {
     "GrokGenerate": GrokGenerate,
     "GrokSubmit": GrokSubmit,
     "GrokCollect": GrokCollect,
+    # AlcheminePack/Image ############################################################
+    "AdjustImage": AdjustImage,
     # AlcheminePack/Inference ########################################################
     "OpenAIInference": OpenAIInference,
     # AlcheminePack/Evaluate #########################################################
@@ -70,6 +74,7 @@ NODE_CLASS_MAPPINGS = {
     "ConsistencyGuard": ConsistencyGuard,
     "TagGenerator": TagGenerator,
     "ClassifyTags": ClassifyTags,
+    "TextPrompt": TextPrompt,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -85,6 +90,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "GrokGenerate": "Grok Generate",
     "GrokSubmit": "Grok Submit",
     "GrokCollect": "Grok Collect",
+    # AlcheminePack/Image ############################################################
+    "AdjustImage": "Adjust Image",
     # AlcheminePack/Inference ########################################################
     "OpenAIInference": "OpenAI Inference",
     # AlcheminePack/Evaluate #########################################################
@@ -113,4 +120,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ConsistencyGuard": "Consistency Guard",
     "TagGenerator": "Tag Generator",
     "ClassifyTags": "Classify Tags",
+    "TextPrompt": "Text Prompt",
 }
