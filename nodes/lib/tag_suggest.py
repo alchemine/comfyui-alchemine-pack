@@ -89,6 +89,7 @@ class TagSuggest:
                 "neg_lift": None,
             }
         self._labels = None          # lazy (category, rating) arrays
+        self._blacklist = None       # (pattern, mask) of the last regex
 
     def labels(self):
         """(category index, rating level) per vocab entry, or None."""
@@ -124,6 +125,31 @@ class TagSuggest:
                 np.maximum(tier["neg_lift"][i][real], _MIN_REPEL_LIFT))
         return attract, repel
 
+    def _blacklist_mask(self, pattern):
+        """Vocabulary entries a user regex rejects, or None for no filter.
+
+        Matched with search() against the spaced form the node reads and
+        writes, so "hair" rejects every hair tag and "^black " only the
+        ones starting that way. An unparseable pattern is reported and
+        ignored rather than raised: a typo should not stop generation.
+        """
+        np = self._np
+        if not pattern or not pattern.strip():
+            return None
+        if self._blacklist and self._blacklist[0] == pattern:
+            return self._blacklist[1]
+        try:
+            rx = re.compile(pattern, re.IGNORECASE)
+        except re.error as exc:
+            print("[TagSuggest] ignoring invalid blacklist regex %r (%s)"
+                  % (pattern, exc))
+            return None
+        mask = np.fromiter(
+            (rx.search(t.replace("_", " ")) is not None for t in self.vocab),
+            dtype=bool, count=len(self.vocab))
+        self._blacklist = (pattern, mask)
+        return mask
+
     def _repel_veto(self, ids, tier, lift_th):
         """Tags that avoid the given context strongly enough to ban.
 
@@ -156,7 +182,7 @@ class TagSuggest:
     def suggest(self, inputs, m=10, min_count=DEFAULT_MIN_COUNT,
                 lift_th=DEFAULT_LIFT_TH, temperature=0.0,
                 top_k=0, top_p=1.0, min_p=0.0, seed=0, rating="e",
-                categories=""):
+                categories="", blacklist=""):
         """Return up to m tags (Danbooru form) that go with the inputs.
 
         One tag per step, LM-style. The step distribution is naive Bayes:
@@ -180,9 +206,13 @@ class TagSuggest:
 
         categories restricts which knobs the output may come from:
         "pose, clothes" allows only those, and "pose:3, clothes:2" also
-        caps how many tags each contributes -- with an unset tag_count,
-        the caps become the target length. A category whose quota runs
-        out is masked for the remaining steps.
+        caps how many tags each contributes -- with m unset, the caps
+        become the target length. A category whose quota runs out is
+        masked for the remaining steps.
+
+        blacklist is a regex; tags it matches are removed from the
+        candidates before sampling, not from the result afterwards, so
+        the requested count still comes back filled.
 
         inputs: tags in any prompt form; out-of-vocabulary ones are
         ignored for scoring but still block duplicates.
@@ -221,6 +251,9 @@ class TagSuggest:
             eligible &= level_of <= RATING_ORDER.index(rating)
         if allowed is not None and cat_of is not None:
             eligible &= np.isin(cat_of, list(allowed))
+        banned = self._blacklist_mask(blacklist)
+        if banned is not None:
+            eligible &= ~banned
 
         chosen, refs = [], [t for t in tags if t]
         blocked = set(refs)
@@ -306,16 +339,16 @@ def category_names():
     return tuple(labels.names) if labels else ()
 
 
-def suggest_tags(prompt, tag_count=10, min_count=DEFAULT_MIN_COUNT,
+def suggest_tags(prompt, n=10, min_count=DEFAULT_MIN_COUNT,
                  temperature=0.0, top_k=0, top_p=1.0, min_p=0.0, seed=0,
-                 rating="e", categories=""):
+                 rating="e", categories="", blacklist=""):
     """Comma-separated prompt in, list of suggested tags (space form) out."""
     engine = load_suggest()
     inputs = [t for t in prompt.split(",") if t.strip()]
-    tags = engine.suggest(inputs, m=tag_count, min_count=min_count,
+    tags = engine.suggest(inputs, m=n, min_count=min_count,
                           temperature=temperature, top_k=top_k,
                           top_p=top_p, min_p=min_p, seed=seed, rating=rating,
-                          categories=categories)
+                          categories=categories, blacklist=blacklist)
     # keep emoticon tags (^_^, o_o) intact: only wordlike tags get spaces
     return [t.replace("_", " ") if re.search(r"[a-z]", t) else t
             for t in tags]

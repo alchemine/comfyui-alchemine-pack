@@ -1,5 +1,6 @@
 """Nodes in AlcheminePack/Prompt."""
 
+import random
 import re
 import numbers
 import textwrap
@@ -18,6 +19,10 @@ from .lib.tag_classify import BUCKETS, classify_tags
 
 
 logger = get_logger(__file__)
+
+# Danbooru rating names, mildest first; the node also offers "random",
+# which draws one of these
+RATINGS = ("general", "sensitive", "questionable", "explicit")
 
 
 #################################################################
@@ -1085,18 +1090,26 @@ class TagGenerator(BasePrompt):
     expressions, pose, clothes, background, compositions, body, objects,
     creatures, etc. "pose, clothes" allows only those two; adding counts
     ("expressions:2, pose:3, background:3") also caps each one, and with
-    tag_count 0 those caps become the target length -- the way to get a
-    balanced prompt instead of whatever the statistics happen to favour.
+    n 0 those caps become the target length -- the way to get a balanced
+    prompt instead of whatever the statistics happen to favour.
 
     rating caps explicitness on both sides: the statistics come from the
     matching corpus slice, and tags whose own rating level exceeds the
     request are masked, so "general" cannot surface a tag Danbooru only
-    applies to racier art.
+    applies to racier art. "random" draws one of the four uniformly from
+    seed, so the choice is reproducible and a new seed rerolls the
+    rating along with the tags.
 
-    tag_count 0 = auto length: a target tag count is drawn from the
-    Danbooru solo-post length distribution (median 31 general tags), and
-    generation also stops early when no candidate is at least twice as
-    likely as chance given the context -- the data has nothing left to say.
+    n 0 = auto length: a target tag count is drawn from the corpus
+    length distribution, and generation also stops early when no
+    candidate is at least twice as likely as chance given the context --
+    the data has nothing left to say.
+
+    blacklist is a regex matched against each candidate tag (spaced
+    form, case-insensitive, substring search): "hair|eyes" drops every
+    hair and eye tag, "^black " only the ones starting that way. It
+    filters the candidates rather than the result, so n tags still come
+    back. An unparseable pattern is logged and ignored.
 
     rating caps the exposure level of the statistics themselves: the
     co-occurrence tables are built per cumulative rating tier (general <
@@ -1105,19 +1118,21 @@ class TagGenerator(BasePrompt):
     that only exist in racier posts and cannot drift toward them.
 
     Examples:
-        Input: text="night, city, rain", tag_count=5, temperature=0.0
+        Input: text="night, city, rain", n=5, temperature=0.0
         Output: ("night, city, rain, cityscape, building, night sky, scenery, road",
                  "cityscape, building, night sky, scenery, road")
-        Input: text="1girl, beach", tag_count=0, categories="clothes:2, pose:2"
+        Input: text="1girl, beach", n=0, categories="clothes:2, pose:2"
         Output: (..., "swimsuit, bikini, holding swim ring, holding beachball")
+        Input: text="1girl, cafe", n=4, blacklist="holding|cup"
+        Output: (..., "food, table, chair, plate")
     """
 
     INPUT_TYPES = lambda: {
         "required": {
             "text": ("STRING", {"forceInput": True}),
-            "tag_count": ("INT", {"default": 10, "min": 0, "max": 100}),
+            "n": ("INT", {"default": 10, "min": 0, "max": 100}),
             "rating": (
-                ["general", "sensitive", "questionable", "explicit"],
+                list(RATINGS) + ["random"],
                 {"default": "explicit"},
             ),
             "temperature": (
@@ -1144,6 +1159,7 @@ class TagGenerator(BasePrompt):
         },
         "optional": {
             "categories": ("STRING", {"default": "", "multiline": False}),
+            "blacklist": ("STRING", {"default": "", "multiline": False}),
         },
     }
     RETURN_TYPES = ("STRING", "STRING")
@@ -1157,17 +1173,23 @@ class TagGenerator(BasePrompt):
     def execute(
         cls,
         text: str,
-        tag_count: int = 10,
+        n: int = 10,
         rating: str = "explicit",
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 0.95,
         min_p: float = 0.0,
         seed: int = 0,
-        min_count: int = 5000,
+        min_count: int = 100,
         categories: str = "",
+        blacklist: str = "",
     ) -> tuple[str, str]:
         """Append companion tags to a prompt."""
+        if rating == "random":
+            # drawn from seed, so a workflow stays reproducible and a new
+            # seed rerolls the rating along with the tags
+            rating = random.Random(seed).choice(RATINGS)
+            logger.info("[TagGenerator] random rating -> %s", rating)
         rating = rating[0]  # danbooru letter form: g/s/q/e
         if not suggest_available():
             logger.warning(
@@ -1175,9 +1197,10 @@ class TagGenerator(BasePrompt):
             )
             return (text, "")
         generated = suggest_tags(
-            text, tag_count=tag_count, min_count=min_count,
+            text, n=n, min_count=min_count,
             temperature=temperature, top_k=top_k, top_p=top_p,
             min_p=min_p, seed=seed, rating=rating, categories=categories,
+            blacklist=blacklist,
         )
         generated_str = ", ".join(generated)
         processed = f"{text.strip().rstrip(',')}, {generated_str}" if generated else text
@@ -1187,18 +1210,19 @@ class TagGenerator(BasePrompt):
     def IS_CHANGED(
         cls,
         text: str,
-        tag_count: int = 10,
+        n: int = 10,
         rating: str = "explicit",
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 0.95,
         min_p: float = 0.0,
         seed: int = 0,
-        min_count: int = 5000,
+        min_count: int = 100,
         categories: str = "",
+        blacklist: str = "",
     ) -> tuple:
-        return (text, tag_count, rating, temperature, top_k, top_p, min_p,
-                seed, min_count, categories)
+        return (text, n, rating, temperature, top_k, top_p, min_p,
+                seed, min_count, categories, blacklist)
 
 
 class ClassifyTags(BasePrompt):
