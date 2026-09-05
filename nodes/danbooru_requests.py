@@ -27,7 +27,7 @@ import requests
 from .lib.utils import get_logger
 
 
-logger = get_logger(__file__)
+logger = get_logger()
 
 
 # Cache TTL (seconds) for volatile endpoints — popular / related / search,
@@ -129,9 +129,7 @@ class BaseDanbooru:
             tag, weight_s, weight_e = match.groups()
         elif re.match(r"^[^\(\[]", tag):
             pass
-        elif match := re.search(r"^(\(+)(.+)(\)+)$", tag):
-            tag = match.group(2)
-        elif match := re.search(r"^(\[+)(.+)(\]+)$", tag):
+        elif (match := re.search(r"^(\(+)(.+)(\)+)$", tag)) or (match := re.search(r"^(\[+)(.+)(\]+)$", tag)):
             tag = match.group(2)
         else:
             pass
@@ -144,9 +142,7 @@ class BaseDanbooru:
         Example: (cat:1.20) -> cat
         """
         tag = tag.strip()
-        if match := re.search(r"^\(([^()]+):[0-9.-]+\)$", tag):
-            tag = match.group(1)
-        elif match := re.search(r"^\(([^()]+):[0-9.-]+:[0-9.-]+\)$", tag):
+        if (match := re.search(r"^\(([^()]+):[0-9.-]+\)$", tag)) or (match := re.search(r"^\(([^()]+):[0-9.-]+:[0-9.-]+\)$", tag)):
             tag = match.group(1)
         elif match := re.search(r"^([\(\[]+)(.+)([\)\]]+)$", tag):
             tag = match.group(2)
@@ -159,16 +155,14 @@ class BaseDanbooru:
         """Convert a tag to a Danbooru tag (spaces->underscores, unescape parens)."""
         tag = tag.strip()
         tag = tag.replace(" ", "_")
-        tag = tag.replace(r"\(", r"(").replace(r"\)", r")")
-        return tag
+        return tag.replace(r"\(", r"(").replace(r"\)", r")")
 
     @staticmethod
     def convert_from_danbooru_tag(tag: str) -> str:
         """Convert a Danbooru tag to a tag (escape parens, underscores->spaces)."""
         tag = tag.strip()
         tag = tag.replace(r"(", r"\(").replace(r")", r"\)")
-        tag = tag.replace("_", " ")
-        return tag
+        return tag.replace("_", " ")
 
 
 #################################################################
@@ -480,8 +474,7 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
     ) -> tuple:
         if random:
             return (date, scale, n, random, seed)
-        else:
-            return (date, scale, n, offset)
+        return (date, scale, n, offset)
 
 
 class DanbooruPostsDownloader(BaseDanbooru):
@@ -540,10 +533,7 @@ class DanbooruPostsDownloader(BaseDanbooru):
 
             file_url = data["file_url"]
             extension = splitext(file_url.split("?")[0])[-1]
-            if prefix:
-                file_name = f"{prefix}_{idx}{extension}"
-            else:
-                file_name = f"{idx}{extension}"
+            file_name = f"{prefix}_{idx}{extension}" if prefix else f"{idx}{extension}"
             file_path = dir_path_obj / file_name
 
             if not file_path.exists():

@@ -21,7 +21,7 @@ from comfy_execution.graph import ExecutionBlocker
 from .lib.utils import any_typ, get_logger
 from .lib import joblock
 
-logger = get_logger(__file__)
+logger = get_logger()
 
 # This module's slot in the shared `jobs.lock` (the Grok nodes use "grok").
 _KIND = "api"
@@ -152,7 +152,7 @@ def _load_workflow(s: str) -> dict:
     if not s:
         raise ValueError("workflow_json is empty")
     if os.path.isfile(s):
-        with open(s, "r", encoding="utf-8") as f:
+        with open(s, encoding="utf-8") as f:
             return json.load(f)
     return json.loads(s)
 
@@ -377,7 +377,6 @@ def _extract_images_tensor(
 class BaseApi:
     """Base class for API nodes."""
 
-    ...
 
 
 #################################################################
@@ -838,6 +837,6 @@ class LoadWorkflow(BaseApi):
 
     def load(self, filename: str) -> tuple[str]:
         path = os.path.join(_workflows_dir(), filename)
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
         return (content,)

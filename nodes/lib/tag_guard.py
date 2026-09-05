@@ -1,19 +1,18 @@
-# -*- coding: utf-8 -*-
 """Core logic: detect tag categories, build ban lists, filter generated tags.
 
 Standalone (no ComfyUI dependency) so it can be unit-tested and reused.
 """
-import os
 import re
 
 try:
-    from . import artifact
+    from . import artifact, tag_category
     from .tag_data import (
         CLOTHES, CLOTHES_CONFLICTS, CATEGORIES, ACCESSORIES,
         PATTERNS, PATTERN_EXCEPTIONS,
     )
 except ImportError:
     import artifact
+    import tag_category
     from tag_data import (
         CLOTHES, CLOTHES_CONFLICTS, CATEGORIES, ACCESSORIES,
         PATTERNS, PATTERN_EXCEPTIONS,
@@ -34,8 +33,7 @@ def normalize(tag):
     t = _WEIGHT_RE.sub("", t)
     t = t.strip("()")
     t = t.replace("_", " ")
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
+    return re.sub(r"\s+", " ", t).strip()
 
 
 def split_prompt(prompt):
@@ -102,8 +100,7 @@ def is_subject(tag):
 
 # --- co-occurrence ---------------------------------------------------------
 
-_COOC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "..", "resources", "tag_cooc.npz")
+_COOC_PATH = artifact.resource("tag_cooc.npz")
 _COOC = None  # lazy: dict or False if unavailable
 
 # tag_cooc.npz is not committed (26MB, rebuilt per data release); it is
@@ -172,18 +169,98 @@ def pair_stats(tag_a, tag_b):
     return None
 
 
-def _bucket_of(tag):
-    """Wiki tag-group bucket of a tag (broad coverage, e.g. 'short
-    sleeves'); lazy import to avoid a circular dependency."""
-    try:
-        from .tag_classify import bucket_of
-    except ImportError:
-        from tag_classify import bucket_of
-    return bucket_of(tag)
+# --- coarse buckets --------------------------------------------------------
+# Buckets come from the same labels TagGenerator samples with
+# (resources/group/, via tag_category): the tag's category decides the
+# bucket, and its rating level decides whether "nsfw" overrides that.
+# Tags the labels do not cover fall back to the static tables above.
+#
+# The bucket names predate those categories and are kept as they are so
+# existing workflows keep their wiring; `compositions` is appended
+# rather than inserted for the same reason.
+
+BUCKETS = ("characters", "clothes", "body", "expression", "pose",
+           "background", "objects", "nsfw", "others", "compositions")
+
+# category (categories_v1.0.json) -> bucket. creatures folds into
+# objects, which is where the old mapping put cats, dogs and elves too.
+_CATEGORY_BUCKET = {
+    "characters": "characters",
+    "expressions": "expression",
+    "pose": "pose",
+    "clothes": "clothes",
+    "background": "background",
+    "compositions": "compositions",
+    "body": "body",
+    "objects": "objects",
+    "creatures": "objects",
+    "etc": "others",
+}
+
+# rating level at or above which a tag is bucketed nsfw regardless of
+# category: q and e. Level s (swimsuit, cleavage) stays with its
+# category, as it did when nsfw was decided by wiki group.
+_NSFW_LEVEL = 2
+
+# tag_data classify() category -> bucket, for tags without a wiki group
+_STATIC_BUCKET = {
+    "clothes": "clothes",
+    "accessories": "clothes",
+    "pose": "pose",
+    "expression": "expression",
+    "eye_color": "expression",
+    "hair_length": "body",
+    "hair_style": "body",
+    "hair_color": "body",
+    "background": "background",
+}
+
+def bucket_of(tag):
+    """Return the bucket name for a normalized tag."""
+    if is_subject(tag):
+        return "characters"
+
+    labels = tag_category.load_labels()
+    if labels:
+        # unlabelled tags must not read as explicit here: this is a
+        # description, not a filter, so an unknown tag falls through
+        # rather than being called nsfw
+        if labels.rating_of(tag, default=0) >= _NSFW_LEVEL:
+            return "nsfw"
+        if labels.knows(tag):
+            bucket = _CATEGORY_BUCKET.get(labels.category_name(tag))
+            if bucket and bucket != "others":
+                return bucket
+
+    cat, _sub = classify(tag)
+    if cat is not None:
+        return _STATIC_BUCKET.get(cat, "others")
+    # last-resort suffix heuristics for common unmapped variants
+    if tag.endswith(" hair"):
+        return "body"
+    if tag.endswith(" eyes"):
+        return "expression"
+    return "others"
+
+
+def classify_tags(text):
+    """Split a prompt and group its tags by bucket.
+
+    Returns {bucket: [tag, ...]} with every bucket present (possibly
+    empty), tags in input order, duplicates dropped.
+    """
+    out = {b: [] for b in BUCKETS}
+    seen = set()
+    for t in split_prompt(text):
+        if t in seen:
+            continue
+        seen.add(t)
+        out[bucket_of(t)].append(t)
+    return out
 
 
 def _is_clothes(tag):
-    return _bucket_of(tag) == "clothes"
+    return bucket_of(tag) == "clothes"
 
 
 # Lift-threshold curve endpoints: at cos == cos_th the threshold is
@@ -276,7 +353,7 @@ def filter_by_conflicts(generated_prompt, locked_prompt="",
     tags (or with earlier kept tags). No category lists required -- works
     for any tag in the co-occurrence vocabulary (e.g. day vs night).
 
-    restrict_category: if set (a wiki bucket name, see tag_classify.BUCKETS),
+    restrict_category: if set (a wiki bucket name, see BUCKETS),
     only tags in that bucket are candidates for removal.
 
     Returns (filtered_prompt, removed_tags_string).
@@ -295,7 +372,7 @@ def filter_by_conflicts(generated_prompt, locked_prompt="",
         if t in locked_set:
             kept.append(raw.strip())
             continue
-        if restrict_category is not None and _bucket_of(t) != restrict_category:
+        if restrict_category is not None and bucket_of(t) != restrict_category:
             kept.append(raw.strip())
             rows.append((t,) + _nearest_ref(t, refs) + ("kept",))
             continue
@@ -380,8 +457,8 @@ def _format_table(rows, cos_th=0.75, lift_th=0.2):
     for t, ref, cos, lift, status in rows:
         cat = "-"
         if ref is not None:
-            b = _bucket_of(t)
-            if b != "others" and b == _bucket_of(ref):
+            b = bucket_of(t)
+            if b != "others" and b == bucket_of(ref):
                 cat = b
         if ref is None:
             cells.append((t, "-", "-", "-", status, cat))
@@ -392,9 +469,9 @@ def _format_table(rows, cos_th=0.75, lift_th=0.2):
                     else _LIFT_CURVE_BASE)
             th_pair = _pair_lift_th(cos, cos_th, lift_th, base)
             lift_stars = (th_pair, th_pair * 2 / 3, th_pair / 3)
-            c = "*" * sum(cos >= s for s in cos_stars) + "%.2f" % cos
-            l = "*" * sum(lift <= s for s in lift_stars) + "%.2f" % lift
-            cells.append((t, ref, c, l, status, cat))
+            cos_cell = "*" * sum(cos >= s for s in cos_stars) + "%.2f" % cos
+            lift_cell = "*" * sum(lift <= s for s in lift_stars) + "%.2f" % lift
+            cells.append((t, ref, cos_cell, lift_cell, status, cat))
     widths = [max(len(r[i]) for r in [header] + cells) for i in range(6)]
 
     def fmt(row):

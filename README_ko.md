@@ -479,7 +479,9 @@ def main(tag: str) -> str:
 
 `FilterTags`와 `ProcessTags` 노드는 `resources/wildcards.yaml`에 정의된 와일드카드를 지원합니다.
 
-**예시:** 블랙리스트에 `__color__`를 사용하면 YAML 파일에 정의된 모든 색상(`red`, `blue`, `green` 등)에 매칭됩니다.
+**예시:** 블랙리스트에 `<color>`를 사용하면 YAML 파일에 정의된 모든 색상으로 펼쳐져 하나의 정규식으로 합쳐집니다. `(shiny|dark|colored|<color>) skin` 한 줄로 `blue skin`, `grey skin`, `two-tone skin` 등이 모두 차단됩니다.
+
+와일드카드 팩이 쓰는 `__color__`가 아니라 꺾쇠 괄호입니다. 와일드카드 프로세서(ImpactWildcardProcessor, Dynamic Prompts)는 이 노드보다 **앞에서** 실행되므로 FilterTags가 보기 전에 `__color__`를 소비해버리고, 그것도 **하나만 뽑는** 방식이라 블랙리스트가 원하는 것과 정반대입니다. `<...>`는 어떤 와일드카드 프로세서도 사용하지 않는 문법이라 그대로 통과해 이 노드까지 도달합니다. 와일드카드 프로세서를 거치지 않는 블랙리스트라면 `__color__` 형태도 계속 동작합니다.
 
 ## 설정
 

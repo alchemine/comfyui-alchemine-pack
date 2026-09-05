@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright
 from .lib.utils import get_logger, run_async
 
 
-logger = get_logger(__file__)
+logger = get_logger()
 
 
 #################################################################
@@ -125,8 +125,7 @@ class BaseDanbooru:
         tag = tag.replace(" ", "_")
 
         # 2. Replace parentheses with brackets
-        tag = tag.replace(r"\(", r"(").replace(r"\)", r")")
-        return tag
+        return tag.replace(r"\(", r"(").replace(r"\)", r")")
 
     @staticmethod
     def convert_from_danbooru_tag(tag: str) -> str:
@@ -136,8 +135,7 @@ class BaseDanbooru:
         tag = tag.replace(r"(", r"\(").replace(r")", r"\)")
 
         # 2. Replace underscores with spaces
-        tag = tag.replace("_", " ")
-        return tag
+        return tag.replace("_", " ")
 
 
 #################################################################
@@ -486,10 +484,7 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
         datas = []
         async with async_playwright() as p:
             api_context = await p.request.new_context(proxy=cls.get_proxy_config())
-            if random:
-                n_pages = n
-            else:
-                n_pages = ceil(n / cls.N_POSTS_PER_POPULAR_PAGE)
+            n_pages = n if random else ceil(n / cls.N_POSTS_PER_POPULAR_PAGE)
             for page in range(1, 1 + n_pages):
                 params["page"] = page
                 params_str = (
@@ -523,8 +518,7 @@ class DanbooruPopularPostsTagsRetriever(BaseDanbooru):
     ) -> tuple:
         if random:
             return (date, scale, n, random, seed)
-        else:
-            return (date, scale, n)
+        return (date, scale, n)
 
 
 class DanbooruPostsDownloader(BaseDanbooru):

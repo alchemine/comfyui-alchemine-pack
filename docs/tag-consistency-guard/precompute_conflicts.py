@@ -43,7 +43,7 @@ Pipeline:
 Conflict at runtime: cosine >= cos_th AND overlap < ov_th (thresholds are
 applied at runtime so they stay tunable without recomputation).
 
-Writes nodes/resources/tag_cooc.npz:
+Writes resources/tag_cooc.npz:
     tags: (N,) names (spaces)   counts: (N,) uint32   n_posts: uint32
     nbr_indptr: (N+1,)          nbr_ids: (nnz,) int32
     nbr_cos: (nnz,) float16     nbr_ov: (nnz,) float16
@@ -58,7 +58,7 @@ from scipy import sparse
 
 HERE = Path(__file__).parent
 LIB = HERE.parent.parent / "nodes" / "lib"
-RES = HERE.parent.parent / "nodes" / "resources"
+RES = HERE.parent.parent / "resources"
 
 MIN_COUNT = 100
 CTX_MIN_COUNT = 1000  # profile (PPMI context) columns: frequent tags only

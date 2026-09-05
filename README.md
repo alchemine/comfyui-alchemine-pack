@@ -29,7 +29,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **SDXLAutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens (SDXL only). |
 | **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
 | **SeparateLoraTags** | Separates lora tags (`<lora:...>`) from a prompt. If the same lora appears multiple times, the last weight is used. |
-| **TagGenerator** | Extends a prompt with tags that go with it, sampled from Danbooru co-occurrence. `categories` picks which axes may contribute and how many (`"pose:2, clothes:3"`); `rating` caps explicitness. |
+| **TagGenerator** | Extends a prompt with tags that go with it, sampled from Danbooru co-occurrence. Six categories (characters, pose, expressions, body, clothes, background) each get a toggle and a `_share` cap -- `0.3` at most 30% of the tags, `-1` uncapped -- balanced by default (body 0.3, pose 0.2, clothes 0.2, characters 0.1, expressions 0.1, background 0.1) so one axis cannot take over the output; background also carries objects and compositions. `characters` owns the subject itself (`1girl`, `solo`, `2girls`), so it is what anchors the gender of everything drawn after it. `cohesion` is how much a pick conditions the next (1.0 = one scene that can run away with itself, 0 = tags with nothing to do with each other); `rating` caps explicitness. Output runs through the ProcessTags pipeline, and `n` counts the tags that survive it. |
 | **ConsistencyGuard** | Drops generated tags that contradict the fixed ones, judged by co-occurrence lift rather than a hand-written conflict list. |
 | **ClassifyTags** | Splits a prompt into coarse buckets (characters, clothes, body, expression, pose, background, objects, nsfw, others). |
 | **TextPrompt** | Plain multiline text input with `dynamicPrompts` off, so typing `{a|b}` no longer jumps the cursor to the end. Wildcards are expanded in Python instead. |
@@ -534,7 +534,9 @@ Same inputs as **Api Generate** (minus `timeout_sec`), plus an optional `label`.
 
 The `FilterTags` and `ProcessTags` nodes support wildcards defined in `resources/wildcards.yaml`.
 
-**Example:** Using `__color__` in the blacklist will match all colors defined in the YAML file (e.g., `red`, `blue`, `green`, etc.).
+**Example:** Using `<color>` in the blacklist expands to every color defined in the YAML file, joined into one alternation — `(shiny|dark|colored|<color>) skin` blocks `blue skin`, `grey skin`, `two-tone skin` and the rest in one line.
+
+Angle brackets, not the `__color__` form the wildcard packs use. A wildcard processor (ImpactWildcardProcessor, Dynamic Prompts) runs *upstream* of this node, so it resolves `__color__` before FilterTags ever sees it — and it resolves it by **picking one** value, which is the opposite of what a blacklist wants. No wildcard processor claims `<...>`, so the token survives them and arrives here intact. The `__color__` form still works for blacklists that never pass through one.
 
 ## Configuration
 

@@ -1,5 +1,5 @@
 {
-  "description": "User-facing primary categories for TagGenerator sampling. Each category lists hierarchy_v1.0 node names; a category owns every tag whose group falls in any listed node's subtree. A tag whose groups span several categories goes to whichever category most of its groups point at, with 'priority' order breaking ties -- majority rather than strict priority because wiki membership is noisy ('beach' is filed under locations, water and swimsuit). Explicitness is not decided here: see ratings_v1.0.json. Built for tags_v1.0.json + hierarchy_v1.0.json.",
+  "description": "User-facing primary categories for TagGenerator sampling. Each category lists hierarchy_v1.0 node names; a category owns every tag whose group falls in any listed node's subtree. A tag whose groups span several categories goes to whichever category most of its groups point at, with 'priority' order breaking ties -- majority rather than strict priority because wiki membership is noisy ('beach' is filed under locations, water and swimsuit). Explicitness is not decided here: see ratings_v1.0.json. Built for tags_v1.0.json + hierarchy_v1.0.json. A category may also be written as {include, exclude} to take a node's subtree minus one branch: the wiki files 'ears tags' under 'face tags', which sends rabbit ears and ear piercings to expressions, and 'piercings' under 'objects', which files a navel piercing as furniture.",
   "priority": [
     "characters",
     "expressions",
@@ -20,12 +20,17 @@
       "family relationships",
       "relative traits"
     ],
-    "expressions": [
-      "face tags",
-      "eyes tags",
-      "eyebrows",
-      "nose"
-    ],
+    "expressions": {
+      "include": [
+        "face tags",
+        "eyes tags",
+        "eyebrows",
+        "nose"
+      ],
+      "exclude": [
+        "ears tags"
+      ]
+    },
     "pose": [
       "posture",
       "gestures",
@@ -43,7 +48,8 @@
     ],
     "clothes": [
       "attire and body accessories",
-      "jobs"
+      "jobs",
+      "piercings"
     ],
     "background": [
       "backgrounds",

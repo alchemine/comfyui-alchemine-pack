@@ -122,3 +122,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ClassifyTags": "Classify Tags",
     "TextPrompt": "Text Prompt",
 }
+
+
+# TagGenerator draws each category toggle and its share on one row; see
+# web/js/tag_generator_categories.js
+WEB_DIRECTORY = "./web/js"

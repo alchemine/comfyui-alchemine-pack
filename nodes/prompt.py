@@ -12,22 +12,158 @@ from .lib.utils import WILDCARD_PATH, get_logger, exception_handler, standardize
 from .lib.tag_guard import (
     filter_generated,
     CATEGORY_NAMES,
+    BUCKETS,
+    classify_tags,
 )
 from .lib.tag_veto import filter_by_veto, veto_available
-from .lib.tag_suggest import suggest_tags, suggest_available
-from .lib.tag_classify import BUCKETS, classify_tags
+from .lib.tag_suggest import (suggest_tags, suggest_available,
+                              DEFAULT_COHESION, DEFAULT_REPEAT_DECAY)
 
 
-logger = get_logger(__file__)
+logger = get_logger()
 
 # Danbooru rating names, mildest first; the node also offers "random",
 # which draws one of these
 RATINGS = ("general", "sensitive", "questionable", "explicit")
 
+# TagGenerator's category widgets, in the order they appear on the node:
+# the shares that make a prompt read like a picture rather than a list --
+# who is in it, what they are doing and feeling, then their body, what it
+# wears, and where it is.
+#
+# These six are what a prompt actually gets steered by; the label file's
+# other categories are not worth a knob each, so background carries them
+# (see CATEGORY_GROUPS) and creatures and etc are left out of the spec
+# entirely.
+#
+# Category names are hardcoded rather than read from
+# resources/group/categories_v1.0.json because INPUT_TYPES runs at import
+# and loading the label tables costs more than this list is worth;
+# tag_category.parse_categories resolves them against the file at sample
+# time, so a rename there only costs the widget its effect, never an
+# error.
+CATEGORY_DEFAULTS = {
+    "characters": 0.1,
+    "pose": 0.2,
+    "expressions": 0.1,
+    "body": 0.3,
+    "clothes": 0.2,
+    "background": 0.1,
+}
+# What each widget actually turns. background stands for the scene around
+# the subject: the props in it (objects) and how it is framed
+# (compositions). The three share one budget rather than getting one
+# each, so background at 0.1 is a tenth of the output for the whole
+# setting -- objects alone will happily fill a prompt with furniture.
+#
+# characters is deliberately NOT in that group. The label file files the
+# subject itself there -- 1girl, 1boy, solo, 2girls -- not just who else
+# is in the scene, and those tags anchor everything downstream: without a
+# gender anchor one male pick pulls the whole draw after it. Sharing the
+# scene's single slot left them to lose a coin toss against furniture.
+CATEGORY_GROUPS = {
+    "background": ("background", "objects", "compositions"),
+}
+
+# Two categories are deliberately unreachable, and stay out of the spec
+# because parse_categories only allows what it is given: creatures pulls
+# toward animal-eared characters the prompt did not ask for, and etc is
+# the unlabelled remainder, too scattershot to steer with.
+
+# widget value meaning "allowed, no cap"; 0 turns the category off and a
+# fraction caps the category's share of the output (0.3 = 30% of n)
+CATEGORY_UNCAPPED = -1.0
+
+# Each category gets two widgets: a toggle under its own name and the
+# share under name + this. The toggle is the one people reach for, so it
+# wins: off means off whatever the share says, which also lets a share
+# be dialled in, switched off, and switched back on unchanged.
+_SHARE_SUFFIX = "_share"
+
+
+def _categories_spec(counts):
+    """Build a parse_categories spec from the category widgets.
+
+    A widget the caller left out falls back to its default, so a
+    workflow saved before these existed still gets the balanced shares
+    rather than an unrestricted draw.
+
+    Every widget uncapped still yields a spec rather than "", because
+    the excluded categories have to stay excluded. All-zero would read
+    as "nothing allowed", which parse_categories cannot express and
+    would silently mean "everything"; it is dropped to the defaults with
+    a warning instead.
+    """
+    counts = {name: (counts.get(name + _SHARE_SUFFIX, default)
+                     if counts.get(name, True) else 0.0)
+              for name, default in CATEGORY_DEFAULTS.items()}
+    if all(v == 0.0 for v in counts.values()):
+        logger.warning(
+            "[TagGenerator] every category is off; sampling with the "
+            "defaults instead -- switch at least one back on",
+        )
+        counts = dict(CATEGORY_DEFAULTS)
+    parts = []
+    for name, value in counts.items():
+        if value == 0.0:
+            continue
+        # the categories a widget stands for are joined into one budget,
+        # so background at 0.1 is a tenth of the output for the whole
+        # setting rather than a tenth each for background, objects and
+        # compositions
+        group = "+".join(CATEGORY_GROUPS.get(name, (name,)))
+        parts.append(group if value < 0 else f"{group}:{value}")
+    return ", ".join(parts)
+
 
 #################################################################
 # Utility functions
 #################################################################
+# Wildcard form the blacklist expands: <color> becomes every value under
+# the "color" key of resources/wildcards.yaml, joined into one
+# alternation. Deliberately NOT the __color__ form the wildcard packs
+# use -- their processors run upstream of this node and would resolve the
+# token first, and they resolve it by *picking one* value, which is the
+# opposite of what a blacklist wants. Angle brackets are syntax no
+# wildcard processor claims, so the token survives them and arrives here
+# intact. __key__ is still accepted for prompts that never pass through
+# one.
+_WILDCARD_FORMS = ("<{key}>", "__{key}__")
+
+
+def blacklist_pattern(blacklist_tags: str) -> str:
+    """Comma-separated blacklist -> one regex, or "" when it is empty.
+
+    Each comma-separated token is its own regex ("tan$", "^solo$"), so
+    they are joined with | rather than matched as one string. A token
+    that will not compile is reported and matched literally instead, so
+    one typo cannot silence the whole blacklist.
+    """
+    if not blacklist_tags or not blacklist_tags.strip():
+        return ""
+    with open(WILDCARD_PATH) as f:
+        wildcards = yaml.safe_load(f) or {}
+    for key, values in wildcards.items():
+        joined = f"({'|'.join(values)})"
+        for form in _WILDCARD_FORMS:
+            blacklist_tags = blacklist_tags.replace(form.format(key=key),
+                                                    joined)
+    patterns = []
+    for t in (t.strip() for t in blacklist_tags.split(",")):
+        if not t:
+            continue
+        try:
+            re.compile(t)
+        except re.error as exc:
+            logger.warning(
+                f"Invalid regex in blacklist token {t!r}: {exc}. "
+                f"Falling back to literal match."
+            )
+            t = re.escape(t)
+        patterns.append(t)
+    return "|".join(patterns)
+
+
 def log_prompt(func):
     """Log prompt input and output in a Unicode box table with class name, showing all lines. Now uses thinner lines, adds Node row, and prevents prompt truncation with word wrapping."""
 
@@ -209,10 +345,7 @@ class BasePrompt:
             added_texts = ",".join(
                 [input_tags_map[t] for t in input_tags_set if t not in fixed_tags_set]
             )
-            if added_texts:
-                text = f"{fixed_tags},{added_texts}"
-            else:
-                text = fixed_tags
+            text = f"{fixed_tags},{added_texts}" if added_texts else fixed_tags
 
         return text, fixed_tags
 
@@ -361,41 +494,17 @@ class FilterTags(BasePrompt):
             text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
 
         groups = text.split("BREAK")
-        fixed_tags_set = set(
-            [
+        fixed_tags_set = {
+            
                 cls.normalize_tag(t)
                 for t in re.split(r"BREAK|,", fixed_tags)
                 if t.strip()
-            ]
-        )
+            
+        }
 
         # 2. Compile blacklist
-        # Convert wildcards to regex
-        with open(WILDCARD_PATH, "r") as f:
-            wildcards = yaml.safe_load(f)
-            for key, values in wildcards.items():
-                blacklist_tags = re.sub(
-                    f"__{key}__", f"({'|'.join(values)})", blacklist_tags
-                )
-        blacklist_tokens = [t.strip() for t in blacklist_tags.split(",") if t.strip()]
-        if blacklist_tokens:
-            # Each token is treated as a regex (e.g. "tan$", "^solo$", "\b").
-            # If a token is not a valid regex, warn and fall back to a literal match
-            # for that token only, so one bad token doesn't break the whole blacklist.
-            patterns = []
-            for t in blacklist_tokens:
-                try:
-                    re.compile(t)
-                    patterns.append(t)
-                except re.error as e:
-                    logger.warning(
-                        f"Invalid regex in blacklist token {t!r}: {e}. "
-                        f"Falling back to literal match."
-                    )
-                    patterns.append(re.escape(t))
-            compiled_blacklist = re.compile("|".join(patterns))
-        else:
-            compiled_blacklist = re.compile(r"(?!)")
+        pattern = blacklist_pattern(blacklist_tags)
+        compiled_blacklist = re.compile(pattern if pattern else r"(?!)")
 
         # 3. Filter tags from blacklist from each group
         filtered_tag_list = []
@@ -486,13 +595,13 @@ class FilterSubtags(BasePrompt):
             text, fixed_tags = cls.preprocess_tags(text, fixed_tags)
 
         groups = text.split("BREAK")
-        fixed_tags_set = set(
-            [
+        fixed_tags_set = {
+            
                 cls.normalize_tag(t)
                 for t in re.split(r"BREAK|,", fixed_tags)
                 if t.strip()
-            ]
-        )
+            
+        }
 
         # 2. filter all subtags from each group
         filtered_tag_list = []
@@ -807,8 +916,7 @@ class SDXLAutoBreak(BasePrompt):
 
             # NOTE: use g tokenizer only
             # return max(count_tokens(k) for k in ["g", "l"])
-            n_tokens = count_tokens("g")
-            return n_tokens
+            return count_tokens("g")
 
         def split(seg):
             # 각 단어와 그 끝 위치 추적 (원본 보존을 위해)
@@ -1061,7 +1169,7 @@ class ConsistencyGuard(BasePrompt):
             processed_text, filtered_tags = filter_generated(
                 text,
                 locked_prompt=fixed_tags,
-                modes={c: "auto" for c in CATEGORY_NAMES},
+                modes=dict.fromkeys(CATEGORY_NAMES, "auto"),
                 clothes_strict=False,
             )
         return (processed_text, filtered_tags)
@@ -1074,6 +1182,22 @@ class ConsistencyGuard(BasePrompt):
         fixed_tags: str = "",
     ) -> tuple:
         return (text, lift_threshold, fixed_tags)
+
+
+def _split_tags(text):
+    """Comma-separated prompt into a list of non-empty tags."""
+    return [t.strip() for t in text.split(",") if t.strip()]
+
+
+def _escape_brackets(tag):
+    """Escape brackets in a generated tag so they stay literal.
+
+    Every tag here comes from the Danbooru vocabulary, where a bracket
+    is part of the name ("star (sky)", "ganyu (genshin impact)") and
+    never emphasis, so escaping is unambiguous -- and necessary, since
+    attention parsing would otherwise read the qualifier as a weight.
+    """
+    return re.sub(r"(?<!\\)([()\[\]])", r"\\\1", tag)
 
 
 class TagGenerator(BasePrompt):
@@ -1101,13 +1225,41 @@ class TagGenerator(BasePrompt):
     association. Raise it if a particular prompt keeps surfacing tags
     too obscure for your model to have learned.
 
-    categories restricts which knobs the output may turn, using the
-    names in resources/group/categories_v1.0.json: characters,
-    expressions, pose, clothes, background, compositions, body, objects,
-    creatures, etc. "pose, clothes" allows only those two; adding counts
-    ("expressions:2, pose:3, background:3") also caps each one, and with
-    n 0 those caps become the target length -- the way to get a balanced
-    prompt instead of whatever the statistics happen to favour.
+    Five widgets restrict which knobs the output may turn: pose,
+    expressions, body, clothes and background. Each takes a share of the
+    output relative to the others, not a fraction of n: with only pose
+    0.2 and expressions 0.1 switched on, a request for 10 tags comes
+    back 7 pose and 3 expressions, because switching a category off
+    hands its share to the ones still on rather than shrinking the
+    result. -1 means allowed with no share of its own, 0 switches the
+    category off, and the defaults -- body 0.3, pose 0.2, clothes 0.2,
+    expressions 0.1, background 0.1 -- balance the node out of the box.
+
+    Counts are split by largest remainder, so they add up to exactly
+    what was asked for, and they apply just as well at n 0, where what
+    they divide up is the target length drawn from the corpus. They are
+    still ceilings rather than promises: a category with nothing left to
+    say stops early, and the output comes back short with a warning.
+
+    The widgets do not map one-to-one onto the categories in
+    resources/group/categories_v1.0.json. background is the setting
+    around the subject, so objects and compositions draw on its budget
+    with it -- one share for the scene, not one each. creatures and etc
+    are not exposed at all and never sampled.
+
+    Capping matters because each pick re-conditions the next: choosing
+    "office chair" makes "swivel chair" more likely, not less, so an
+    unrestricted draw tends to pile up in whichever category the prompt
+    pulls hardest. background 0.1 breaks that up.
+
+    Three of them are easy to misread. pose owns the sex act groups, but
+    explicitness is rating's job, not this one -- leaving pose on at
+    rating "general" cannot surface them. clothes owns the job tags, so
+    turning it off also drops "office lady" and "nurse". characters owns
+    the subject itself, not just the company it keeps: it decides
+    whether "1girl" and "solo" can appear at all, which is what anchors
+    the gender of everything drawn after them -- and, less happily, the
+    franchise grouping tags filed beside them.
 
     rating caps explicitness on both sides: the statistics come from the
     matching corpus slice, and tags whose own rating level exceeds the
@@ -1115,6 +1267,35 @@ class TagGenerator(BasePrompt):
     applies to racier art. "random" draws one of the four uniformly from
     seed, so the choice is reproducible and a new seed rerolls the
     rating along with the tags.
+
+    lift_threshold is the veto's only tuned parameter, the same knob
+    ConsistencyGuard exposes and the same default: a candidate is banned
+    when the corpus expected it alongside a reference tag often enough
+    (>= 15 posts) and the pair still came in below this fraction of
+    chance. 0.1 only catches pairs that essentially never co-occur, so
+    raise it when the output keeps contradicting the prompt in ways the
+    data merely discourages -- "no panties" and "lace-trimmed panties"
+    sit at 0.15, six times rarer than chance but past a 0.1 cut. Vetoed
+    candidates are replaced rather than dropped, so n still holds.
+
+    repeat_decay is the brake on cohesion. Because a pick re-conditions
+    the next one, the strongest neighbours of "blue skin" are the other
+    skin colours, and a draw can spend half its budget enumerating one
+    noun -- which the category quotas cannot stop, since those tags all
+    sit in the same category. Each tag already in the prompt ending in
+    the same word multiplies a candidate's odds by repeat_decay, so the
+    second one needs twice the evidence and the third four times.
+
+    cohesion is how much each generated tag conditions the ones after
+    it, against the prompt's own pull. At 0 every tag answers to the
+    prompt alone and they have nothing to do with each other -- for
+    "night, city, rain", mechanical arms beside oversized wings beside a
+    leg tattoo. At 1.0 a pick counts for as much as a prompt tag and the
+    output reads as one scene, at the risk of becoming its own subject:
+    "chair" pulls "office chair" pulls "computer keyboard" until the bar
+    the prompt asked for is an office. The default sits between them,
+    where a raincoat can follow an umbrella but a category quota still
+    stops any one axis from taking the prompt over.
 
     n 0 = auto length: a target tag count is drawn from the corpus
     length distribution, and generation also stops early when no
@@ -1125,7 +1306,10 @@ class TagGenerator(BasePrompt):
     form, case-insensitive, substring search): "hair|eyes" drops every
     hair and eye tag, "^black " only the ones starting that way. It
     filters the candidates rather than the result, so n tags still come
-    back. An unparseable pattern is logged and ignored.
+    back. An unparseable pattern is logged and ignored. The same regex
+    is handed to FilterTags below, so one field bans a tag on both ends
+    -- write alternatives with "|" rather than commas to keep the two
+    reading it the same way.
 
     rating caps the exposure level of the statistics themselves: the
     co-occurrence tables are built per cumulative rating tier (general <
@@ -1133,55 +1317,267 @@ class TagGenerator(BasePrompt):
     so at rating "general" the sampler has never seen the associations
     that only exist in racier posts and cannot drift toward them.
 
+    The generated tags then go through the ProcessTags pipeline --
+    replace_underscores, filter_tags, filter_subtags, each switchable.
+    It runs over the whole prompt with `text` as the fixed tags, so the
+    input is never filtered and only the generated tags are at risk. n
+    counts what survives: post-processing can drop a pick (a blacklist hit,
+    or a tag the prompt already implies, like "dog" once "white dog" is
+    there), so the sampler is asked again for as many as went missing.
+    That works because it is deterministic given the seed and extends
+    its own prefix rather than redrawing, so a top-up round only ever
+    adds tags. It gives up after a few rounds and logs how many it got.
+
     Examples:
         Input: text="night, city, rain", n=5, temperature=0.0
-        Output: ("night, city, rain, cityscape, building, night sky, scenery, road",
-                 "cityscape, building, night sky, scenery, road")
-        Input: text="1girl, beach", n=0, categories="clothes:2, pose:2"
-        Output: (..., "swimsuit, bikini, holding swim ring, holding beachball")
+        Output: "night, city, rain, cityscape, building, night sky, scenery, road"
+        Input: text="1girl, beach", n=8, clothes=0.25, pose=0.25, rest 0
+        Output: "1girl, beach, swimsuit, bikini, holding swim ring, holding beachball"
         Input: text="1girl, cafe", n=4, blacklist="holding|cup"
-        Output: (..., "food, table, chair, plate")
+        Output: "1girl, cafe, food, table, chair, plate"
     """
+
+    # Every widget carries its own one-liner: the docstring above is the
+    # reference, but nobody reads it with the node in front of them.
+    DESCRIPTION = (
+        "Extends a prompt with tags that go with it, drawn from Danbooru "
+        "co-occurrence statistics.\n\n"
+        "The sampler picks one tag at a time. A tag is a candidate only if "
+        "something in the prompt pulls it, it scores by how much rarer than "
+        "chance that pull is, and tags the corpus shows the prompt avoiding "
+        "are removed outright.\n\n"
+        "Start with n and the six category shares; the rest are for when "
+        "the output is wrong in a specific way. Hover any widget for what "
+        "it does."
+    )
 
     INPUT_TYPES = lambda: {
         "required": {
-            "text": ("STRING", {"forceInput": True}),
-            "n": ("INT", {"default": 10, "min": 0, "max": 100}),
-            "rating": (
-                list(RATINGS) + ["random"],
-                {"default": "explicit"},
-            ),
-            "temperature": (
-                "FLOAT",
-                {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.05},
-            ),
-            "top_k": ("INT", {"default": 50, "min": 0, "max": 500}),
-            "top_p": (
-                "FLOAT",
-                {"default": 0.95, "min": 0.0, "max": 1.0, "step": 0.01},
-            ),
-            "min_p": (
-                "FLOAT",
-                {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01},
-            ),
-            "seed": (
-                "INT",
-                {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF},
-            ),
-            "min_count": (
-                "INT",
-                {"default": 100, "min": 100, "max": 1000000, "step": 100},
-            ),
+            "text": ("STRING", {
+                "forceInput": True,
+                "tooltip": "The prompt to extend. Its tags condition every "
+                           "pick and are never filtered themselves. Tags "
+                           "outside the 20,811-tag vocabulary are ignored "
+                           "silently -- Danbooru spells a bar "
+                           "'bar_(place)', not 'bar'.",
+            }),
+            "n": ("INT", {
+                "default": 20, "min": 0, "max": 100,
+                "tooltip": "How many tags to add, counted after "
+                           "post-processing. 0 = auto: the length is drawn "
+                           "from the corpus and generation also stops early "
+                           "once nothing is clearly better than chance.",
+            }),
+            **{
+                key: widget
+                for name, share in CATEGORY_DEFAULTS.items()
+                for key, widget in (
+                    (name, ("BOOLEAN", {
+                        "default": True,
+                        "tooltip": "Allow %s tags at all. Switching it off "
+                                   "hands its share to the categories still "
+                                   "on rather than shrinking the output."
+                                   % name,
+                    })),
+                    (name + _SHARE_SUFFIX, ("FLOAT", {
+                        "default": share, "min": CATEGORY_UNCAPPED,
+                        "max": 1.0, "step": 0.05,
+                        "tooltip": "How much of the output %s may take, "
+                                   "relative to the other categories that "
+                                   "are on: with only pose 0.2 and "
+                                   "expressions 0.1, ten tags come back 7 "
+                                   "and 3. -1 = allowed with no share of "
+                                   "its own." % name,
+                    })),
+                )
+            },
+            "lift_threshold": ("FLOAT", {
+                "default": 0.1, "min": 0.0, "max": 0.5, "step": 0.01,
+                "tooltip": "Veto strength. A candidate is banned when the "
+                           "corpus expected it alongside a prompt tag often "
+                           "enough (>= 15 posts) and it still came in below "
+                           "this fraction of chance. Raise it when the "
+                           "output contradicts the prompt in ways the data "
+                           "merely discourages; 0.1 only catches pairs that "
+                           "essentially never co-occur.",
+            }),
+            "cohesion": ("FLOAT", {
+                "default": DEFAULT_COHESION, "min": 0.0, "max": 1.0,
+                "step": 0.05,
+                "tooltip": "How much each generated tag conditions the ones "
+                           "after it. 0 = every tag answers to the prompt "
+                           "alone and they have nothing to do with each "
+                           "other. 1 = a pick counts as much as a prompt "
+                           "tag, so the output reads as one scene but can "
+                           "wander off into its own subject.",
+            }),
+            "repeat_decay": ("FLOAT", {
+                "default": DEFAULT_REPEAT_DECAY, "min": 0.05, "max": 1.0,
+                "step": 0.05,
+                "tooltip": "Shrink a tag's odds by this factor for every "
+                           "tag already in the prompt ending in the same "
+                           "word. 0.5 halves them each time, so a second "
+                           "'<colour> skin' needs twice the evidence the "
+                           "first did and a third needs four times; 1.0 "
+                           "turns it off. Counters cohesion, which pulls "
+                           "hardest along the axis it just moved on.",
+            }),
+            "rating": (list(RATINGS) + ["random"], {
+                "default": "explicit",
+                "tooltip": "Explicitness ceiling, on both halves of the "
+                           "statistic: the co-occurrence tables come from "
+                           "the matching corpus slice, and tags rated above "
+                           "the request are masked. It is a ceiling, not a "
+                           "target -- 'explicit' permits rather than "
+                           "pushes. 'random' draws one from the seed.",
+            }),
+            "temperature": ("FLOAT", {
+                "default": 1.0, "min": 0.0, "max": 5.0, "step": 0.05,
+                "tooltip": "Sampling randomness. 0 = always take the best "
+                           "candidate, which makes the seed irrelevant and "
+                           "every run identical. Higher spreads the picks "
+                           "over weaker candidates.",
+            }),
+            "top_k": ("INT", {
+                "default": 50, "min": 0, "max": 500,
+                "tooltip": "Sample from this many best candidates per step. "
+                           "0 = no limit. Ignored at temperature 0.",
+            }),
+            "top_p": ("FLOAT", {
+                "default": 0.95, "min": 0.0, "max": 1.0, "step": 0.01,
+                "tooltip": "Keep the best candidates adding up to this much "
+                           "probability. 1.0 = no limit. Watch out for 0, "
+                           "which leaves exactly one candidate and turns "
+                           "sampling back into greedy picking.",
+            }),
+            "min_p": ("FLOAT", {
+                "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
+                "tooltip": "Drop candidates below this fraction of the best "
+                           "candidate's probability. 0 = off.",
+            }),
+            "min_count": ("INT", {
+                "default": 100, "min": 100, "max": 1000000, "step": 100,
+                "tooltip": "Ignore tags with fewer than this many posts in "
+                           "the requested rating tier. The default is the "
+                           "vocabulary floor, i.e. no filtering. Raise it "
+                           "when a prompt keeps surfacing tags too obscure "
+                           "for your model to have learned.",
+            }),
         },
         "optional": {
-            "categories": ("STRING", {"default": "", "multiline": False}),
-            "blacklist": ("STRING", {"default": "", "multiline": False}),
+            "replace_underscores": ("BOOLEAN", {
+                "default": True,
+                "tooltip": "Write tags as 'blue eyes' rather than "
+                           "'blue_eyes'.",
+            }),
+            "filter_tags": ("BOOLEAN", {
+                "default": True,
+                "tooltip": "Drop duplicates and blacklisted tags from the "
+                           "finished prompt.",
+            }),
+            "filter_subtags": ("BOOLEAN", {
+                "default": True,
+                "tooltip": "Drop tags another tag already implies, keeping "
+                           "'white dog' over 'dog'. It can eat a pick the "
+                           "sampler just made, which is why the node asks "
+                           "for replacements until n survive.",
+            }),
+            "blacklist": ("STRING", {
+                "default": "", "multiline": False,
+                "tooltip": "Regex matched against each candidate tag in "
+                           "spaced form, case-insensitively: 'hair|eyes' "
+                           "drops every hair and eye tag. It filters "
+                           "candidates rather than results, so n tags still "
+                           "come back. Use '|', not commas.",
+            }),
+            "seed": (
+                "INT",
+                {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF,
+                 "control_after_generate": True,
+                 "tooltip": "Reproducibility. The same seed and settings "
+                            "always give the same tags -- unless "
+                            "temperature is 0, where the seed does nothing "
+                            "at all."},
+            ),
         },
     }
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("processed_text", "generated_tags")
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
     FUNCTION = "execute"
     CATEGORY = "AlcheminePack/Prompt"
+
+    # each top-up round asks the sampler for more tags; bounded so an
+    # over-aggressive filter cannot spin here forever
+    _MAX_ROUNDS = 5
+
+    # ceiling on a top-up ask, as a multiple of n: past this the filters
+    # are eating so much that drawing more is not the answer
+    _MAX_ASKED_FACTOR = 8
+
+    @classmethod
+    def _postprocess(cls, prompt, text, blacklist, replace_underscores,
+                     filter_tags, filter_subtags):
+        """Run the ProcessTags pipeline over a prompt.
+
+        `blacklist` serves both ends of the node -- the sampler masks the
+        candidates it matches, FilterTags removes anything that slips
+        through -- and the node's own `text` is what FilterTags and
+        FilterSubtags treat as fixed, so post-processing only ever
+        touches the generated tags.
+        """
+        if not (replace_underscores or filter_tags or filter_subtags):
+            return prompt
+        return ProcessTags.execute(
+            text=prompt,
+            replace_underscores=replace_underscores,
+            filter_tags=filter_tags,
+            filter_subtags=filter_subtags,
+            auto_break=False,
+            blacklist_tags=blacklist,
+            fixed_tags=text,
+        )[0]
+
+    @classmethod
+    def _fill(cls, n, draw, process, base, seen):
+        """Draw until `n` tags survive post-processing, or rounds run out.
+
+        n is a promise about the finished prompt, not about the draw:
+        post-processing runs inside the node precisely so the count asked
+        for is the count returned, which means the shortfall it leaves
+        has to be redrawn here.
+
+        A bigger ask is not a superset of a smaller one -- the category
+        quotas are shares of the ask, so raising it re-splits the budget
+        and can even come back with fewer tags -- so each round is judged
+        on its own and the best one wins.
+        """
+        wanted, asked, kept = max(n, 0), max(n, 0), []
+        for attempt in range(cls._MAX_ROUNDS if wanted else 1):
+            generated = draw(asked if wanted else n)
+            processed = process(f"{base.strip().rstrip(',')}, "
+                                + ", ".join(_escape_brackets(t)
+                                            for t in generated))
+            survived = [t for t in _split_tags(processed) if t not in seen]
+            if len(survived) > len(kept):
+                kept = survived
+            if not wanted or len(kept) >= wanted:
+                break
+            # scale the next ask by the share of the last one that
+            # survived rather than by the shortfall: the filters drop a
+            # roughly constant fraction, so topping up by the missing
+            # count alone gains a round at a time and runs out of rounds
+            # before it converges. +attempt keeps it moving when nothing
+            # was filtered and the sampler is the one falling short.
+            asked = min(-(-asked * wanted // max(len(survived), 1))
+                        + attempt + 1,
+                        cls._MAX_ASKED_FACTOR * wanted + 16)
+        if wanted and len(kept) < wanted:
+            logger.warning(
+                "[TagGenerator] only %d of %d tags after %d rounds -- lower "
+                "lift_threshold or min_count, or relax blacklist and "
+                "categories", len(kept), wanted, cls._MAX_ROUNDS,
+            )
+        return kept[:wanted] if wanted else kept
 
     @classmethod
     @exception_handler
@@ -1190,6 +1586,7 @@ class TagGenerator(BasePrompt):
         cls,
         text: str,
         n: int = 10,
+        lift_threshold: float = 0.1,
         rating: str = "explicit",
         temperature: float = 1.0,
         top_k: int = 50,
@@ -1197,36 +1594,70 @@ class TagGenerator(BasePrompt):
         min_p: float = 0.0,
         seed: int = 0,
         min_count: int = 100,
-        categories: str = "",
         blacklist: str = "",
-    ) -> tuple[str, str]:
+        replace_underscores: bool = True,
+        filter_tags: bool = True,
+        filter_subtags: bool = True,
+        cohesion: float = DEFAULT_COHESION,
+        repeat_decay: float = DEFAULT_REPEAT_DECAY,
+        **categories: float,
+    ) -> tuple[str]:
         """Append companion tags to a prompt."""
         if rating == "random":
             # drawn from seed, so a workflow stays reproducible and a new
             # seed rerolls the rating along with the tags
             rating = random.Random(seed).choice(RATINGS)
-            logger.info("[TagGenerator] random rating -> %s", rating)
+            logger.debug("[TagGenerator] random rating -> %s", rating)
         rating = rating[0]  # danbooru letter form: g/s/q/e
+        spec = _categories_spec(categories)
+
+        def process(prompt):
+            return cls._postprocess(prompt, text, blacklist,
+                                    replace_underscores, filter_tags,
+                                    filter_subtags)
+
         if not suggest_available():
             logger.warning(
                 "[TagGenerator] suggest artifact not found; passing through"
             )
-            return (text, "")
-        generated = suggest_tags(
-            text, n=n, min_count=min_count,
-            temperature=temperature, top_k=top_k, top_p=top_p,
-            min_p=min_p, seed=seed, rating=rating, categories=categories,
-            blacklist=blacklist,
-        )
-        generated_str = ", ".join(generated)
-        processed = f"{text.strip().rstrip(',')}, {generated_str}" if generated else text
-        return (processed, generated_str)
+            return (process(text),)
+
+        # the sampler masks candidates with a single regex, so the widget
+        # value has to be compiled the same way FilterTags compiles it --
+        # wildcards expanded, commas turned into alternation. Passing it
+        # raw made every comma-separated blacklist match nothing, which
+        # left the whole list to the post-filter: the sampler kept
+        # spending picks on tags that were about to be thrown away.
+        blacklist_rx = blacklist_pattern(blacklist)
+
+        # No quota_total: the category quotas are shares of the round's
+        # own ask. Pinning them to n would cap the whole draw at n tags,
+        # so a top-up round asking for more would get the same list back
+        # and the shortfall could never be refilled.
+        def draw(m):
+            return suggest_tags(
+                text, n=m, min_count=min_count, temperature=temperature,
+                top_k=top_k, top_p=top_p, min_p=min_p, seed=seed,
+                rating=rating, categories=spec, blacklist=blacklist_rx,
+                lift_th=lift_threshold,
+                cohesion=cohesion, repeat_decay=repeat_decay,
+            )
+
+        # the pipeline is applied to the whole prompt, so the kept tags are
+        # whatever the combined pass adds on top of the processed input
+        base = process(text)
+        base_tags = _split_tags(base)
+        kept = cls._fill(n, draw, process, base, set(base_tags))
+        if not kept:
+            return (base,)
+        return (", ".join(base_tags + kept),)
 
     @classmethod
     def IS_CHANGED(
         cls,
         text: str,
         n: int = 10,
+        lift_threshold: float = 0.1,
         rating: str = "explicit",
         temperature: float = 1.0,
         top_k: int = 50,
@@ -1234,12 +1665,18 @@ class TagGenerator(BasePrompt):
         min_p: float = 0.0,
         seed: int = 0,
         min_count: int = 100,
-        categories: str = "",
         blacklist: str = "",
+        replace_underscores: bool = True,
+        filter_tags: bool = True,
+        filter_subtags: bool = True,
+        cohesion: float = DEFAULT_COHESION,
+        repeat_decay: float = DEFAULT_REPEAT_DECAY,
+        **categories: float,
     ) -> tuple:
-        return (text, n, rating, temperature, top_k, top_p, min_p,
-                seed, min_count, categories, blacklist)
-
+        return (text, n, lift_threshold, rating, temperature, top_k, top_p,
+                min_p, seed, min_count, blacklist, replace_underscores,
+                filter_tags, filter_subtags, cohesion, repeat_decay,
+                tuple(sorted(categories.items())))
 
 class ClassifyTags(BasePrompt):
     """Split prompt tags into coarse category outputs.

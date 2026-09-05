@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Category and rating labels for the tag vocabulary.
 
 Four JSON layers under resources/group/ answer, for any tag, "which
@@ -18,13 +17,17 @@ Ratings are cumulative, so a level is a ceiling: asking for "s" admits
 g and s tags.
 """
 import json
+import math
 import os
+
+try:
+    from . import artifact
+except ImportError:  # flat import (docs/ scripts put nodes/lib on sys.path)
+    import artifact
 
 RATING_ORDER = ("g", "s", "q", "e")
 
-_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                    "..", "resources", "group")
-_LABELS = None          # lazy singleton: Labels, or False if unavailable
+_DIR = artifact.resource("group")
 
 
 def normalize(tag):
@@ -67,9 +70,21 @@ class Labels:
         # group -> highest-priority category that owns it
         self._group_cat = {}
         for rank, name in enumerate(self.names):
-            for root in cats["categories"].get(name, []):
+            spec = cats["categories"].get(name, [])
+            # a category is a list of tree nodes, or {include, exclude}
+            # when it wants a node's subtree minus a branch of it: the
+            # wiki files ears under the face, which is true anatomy and
+            # useless here -- "rabbit ears" is not an expression
+            if isinstance(spec, dict):
+                roots = spec.get("include", [])
+                blocked = set()
+                for name_ in spec.get("exclude", []):
+                    blocked |= descendants(name_)
+            else:
+                roots, blocked = spec, ()
+            for root in roots:
                 for group in descendants(root):
-                    if group not in self._group_cat:
+                    if group not in blocked and group not in self._group_cat:
                         self._group_cat[group] = rank
 
     def category_of(self, tag):
@@ -117,22 +132,31 @@ class Labels:
         return cats, levels
 
 
+@artifact.lazy
 def load_labels():
-    global _LABELS
-    if _LABELS is None:
-        try:
-            _LABELS = Labels()
-        except Exception:
-            _LABELS = False
-    return _LABELS
+    """The category/rating labels, or False when they are missing."""
+    return Labels()
 
 
 def parse_categories(spec, names):
-    """Parse a category request into (allowed ranks, quota by rank).
+    """Parse a category request into (allowed ranks, shares by group).
 
-    "" or None      -> (None, None): every category allowed, no quota
-    "pose, clothes" -> only those categories, no per-category limit
-    "pose:3, ..."   -> same, and at most 3 tags may come from pose
+    "" or None          -> (None, None): everything allowed, no quota
+    "pose, clothes"     -> only those, no limit on either
+    "pose:2, body:3"    -> same, and the output is split between them in
+                           that proportion
+    "background+objects:1, pose:2" -> background and objects draw on one
+                           shared budget, a third of the output
+
+    Shares are weights relative to each other, not fractions of the tag
+    count: what matters is that pose is worth twice what expressions is,
+    so switching a category off hands its share to the ones still on
+    instead of shrinking the result. resolve_quota turns them into
+    counts once the length is known -- it is the only side that knows it.
+
+    A group joined with "+" is one budget several categories draw on. It
+    is what lets one widget stand for several label categories without
+    each of them quietly getting the widget's share to itself.
 
     Unknown names are ignored; a spec that names nothing usable behaves
     like an empty spec so a typo cannot silence the generator.
@@ -140,19 +164,60 @@ def parse_categories(spec, names):
     if not spec or not spec.strip():
         return None, None
     rank_of = {name: i for i, name in enumerate(names)}
-    allowed, quota = set(), {}
+    allowed, groups = set(), []
     for item in spec.replace("\n", ",").split(","):
         item = item.strip()
         if not item:
             continue
-        name, _, count = item.partition(":")
-        rank = rank_of.get(name.strip().lower())
-        if rank is None:
+        head, _, share = item.partition(":")
+        ranks = tuple(r for r in (rank_of.get(part.strip().lower())
+                                  for part in head.split("+"))
+                      if r is not None)
+        if not ranks:
             continue
-        allowed.add(rank)
-        count = count.strip()
-        if count.isdigit():
-            quota[rank] = quota.get(rank, 0) + int(count)
+        allowed.update(ranks)
+        share = share.strip()
+        if not share:
+            continue
+        try:
+            value = float(share)
+        except ValueError:
+            continue
+        if value > 0.0:
+            groups.append((ranks, value))
     if not allowed:
         return None, None
-    return allowed, (quota or None)
+    return allowed, (groups or None)
+
+
+def resolve_quota(groups, total):
+    """Split `total` tags between the groups, in proportion to their shares.
+
+    Largest remainder, so the counts add up to exactly `total` rather
+    than to whatever independent rounding happens to produce: two groups
+    at 2 and 1 over ten tags are 7 and 3, not 7 and 4. That makes a
+    share a budget the sampler fills, which is how anyone setting one
+    reads it -- "pose 2, expressions 1" means two thirds of the output
+    is pose.
+
+    Returns {rank: (group key, cap)} so the caller can count a pick
+    against the budget its category draws on, whether that budget
+    belongs to one category or several.
+    """
+    if not groups or total <= 0:
+        return None
+    weight = sum(share for _, share in groups)
+    if weight <= 0:
+        return None
+    exact = [share / weight * total for _, share in groups]
+    caps = [int(math.floor(v)) for v in exact]
+    spare = total - sum(caps)
+    # hand the leftovers to whoever was rounded down hardest
+    for k in sorted(range(len(groups)), key=lambda i: exact[i] - caps[i],
+                    reverse=True)[:spare]:
+        caps[k] += 1
+    out = {}
+    for key, ((ranks, _), cap) in enumerate(zip(groups, caps)):
+        for rank in ranks:
+            out[rank] = (key, cap)
+    return out

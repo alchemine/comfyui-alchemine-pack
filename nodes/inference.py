@@ -18,7 +18,7 @@ from PIL import Image
 from .lib.utils import get_logger
 
 
-logger = get_logger(__file__)
+logger = get_logger()
 
 
 CACHE_MAX_SIZE = 10
@@ -76,9 +76,7 @@ class BaseInference:
 
         if return_bytes:
             return image_bytes
-        else:
-            image_b64 = b64encode(image_bytes).decode("utf-8")
-            return image_b64
+        return b64encode(image_bytes).decode("utf-8")
 
 
 #################################################################

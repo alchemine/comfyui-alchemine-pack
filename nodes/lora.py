@@ -1,7 +1,6 @@
 """Nodes in AlcheminePack/Lora. (experimental nodes)"""
 
 import os
-from hashlib import md5
 from pathlib import Path
 from os.path import exists, relpath
 
@@ -18,7 +17,6 @@ from PIL import Image
 class BaseLora:
     """Base class for Lora nodes."""
 
-    ...
 
 
 #################################################################
@@ -46,7 +44,6 @@ class DownloadImage(BaseLora):
             os.makedirs(dir_path)
 
         extension = url.split(".")[-1]
-        file_name = md5(url.encode()).hexdigest()[:8]
         idx = 1 + len(os.listdir(dir_path))
         file_path = dir_path / f"{idx}.{extension}"
         if exists(file_path):

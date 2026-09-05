@@ -3,6 +3,7 @@
 import re
 import asyncio
 import logging
+import tomllib
 import threading
 from pathlib import Path
 from functools import wraps
@@ -14,7 +15,6 @@ from dotenv import load_dotenv
 # Constants
 #################################################################
 ROOT_DIR = Path(__file__).parent.parent.parent
-CUSTOM_NODES_DIR = ROOT_DIR.parent
 
 # `.env` is optional: load it when present, otherwise just use the OS
 # environment. Nodes that actually need a credential read it at execution time
@@ -28,32 +28,60 @@ RESOURCES_DIR = ROOT_DIR / "resources"
 WILDCARD_PATH = RESOURCES_DIR / "wildcards.yaml"
 
 
+def _package_name() -> str:
+    """Read the pack name from `pyproject.toml`, falling back to the directory."""
+    try:
+        with open(ROOT_DIR / "pyproject.toml", "rb") as f:
+            return tomllib.load(f)["project"]["name"]
+    except Exception:
+        return ROOT_DIR.name
+
+
+PACKAGE_NAME = _package_name()
+
+
 #################################################################
 # Logger setup
 #################################################################
-def get_logger(name: str = "comfyui-alchemine-pack", level: int = logging.INFO) -> logging.Logger:
-    """Get a logger with a custom formatter that shows the relative path of the file."""
+# One logger for the whole pack, so the level is set in one place:
+#     logging.getLogger(PACKAGE_NAME).setLevel(logging.DEBUG)
+# The per-node label comes from the message, not from the logger name:
+# `logger.info("[TagGenerator] ...")` renders as `[<pack>/TagGenerator]`.
+# Untagged lines fall back to the module the call came from.
+_NODE_TAG_RE = re.compile(r"^\[([^\]]+)\]\s*")
 
-    class RootNameFormatter(logging.Formatter):
-        def format(self, record):
-            try:
-                record.name = str(Path(record.name).relative_to(CUSTOM_NODES_DIR))
-            except ValueError:
-                # `name` is not a path under custom_nodes (e.g. the default
-                # package name); leave it as-is.
-                pass
+
+class _NodeTagFormatter(logging.Formatter):
+    def format(self, record):
+        message = record.getMessage()
+        match = _NODE_TAG_RE.match(message)
+        if match:
+            node = match.group(1)
+            message = message[match.end():]
+        else:
+            node = record.module
+        original = (record.msg, record.args)
+        record.msg = f"[{PACKAGE_NAME}/{node}] {message}"
+        record.args = ()
+        try:
             return super().format(record)
+        finally:
+            record.msg, record.args = original
 
-    logger = logging.getLogger(name)
-    logger.handlers.clear()
-    handler = logging.StreamHandler()
-    formatter = RootNameFormatter(
-        "%(asctime)s | %(levelname)-8s | %(name)s:%(lineno)d: %(message)s"
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(level)
-    logger.propagate = False  # Prevent duplicate logs from root logger
+
+def get_logger(level: int = logging.INFO) -> logging.Logger:
+    """Return the pack-wide logger, configuring its handler on first call."""
+    logger = logging.getLogger(PACKAGE_NAME)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        # INFO/WARNING/ERROR are the levels actually used; 7 fits the longest.
+        handler.setFormatter(_NodeTagFormatter(
+            "%(asctime)s | %(levelname)-7s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
+        logger.addHandler(handler)
+        logger.setLevel(level)
+        logger.propagate = False  # Prevent duplicate logs from root logger
     return logger
 
 
@@ -68,7 +96,8 @@ def exception_handler(func):
         try:
             return func(*args, **kwargs)
         except Exception:
-            logging.error(f"# Unexpected error in '{func.__name__}'", exc_info=True)
+            get_logger().error("unexpected error in '%s'", func.__name__,
+                               exc_info=True)
             raise
 
     return wrapper
@@ -184,9 +213,29 @@ def parse_prompt_attention(text):
     return res
 
 
+# A Danbooru qualifier binds straight onto the tag it disambiguates --
+# "star_(sky)", "ganyu_(genshin_impact)" -- with no space before the
+# bracket, which is what separates it from A1111 emphasis: "(cat)",
+# "1girl, (blue eyes:1.2)" and even "star (sky)" all keep meaning
+# emphasis because a comma or a space precedes the bracket. Already
+# escaped "\(" is left alone: the backslash is not a word character.
+DANBOORU_QUALIFIER = re.compile(r"(?<=\w)\(([^()]*)\)")
+
+
+def escape_qualifiers(text: str) -> str:
+    """Escape the brackets of Danbooru qualifiers so they stay literal.
+
+    Without this, attention parsing reads the qualifier as emphasis and
+    "star_(sky)" comes back out as "star_(sky:1.1)" -- the tag silently
+    gains a weight it never asked for.
+    """
+    return DANBOORU_QUALIFIER.sub(r"\\(\1\\)", text)
+
+
 def standardize_prompt(text: str) -> str:
     # Handle :3
     text = re.sub(r":3\)", r":3:1.1)", text)
+    text = escape_qualifiers(text)
     attentions = parse_prompt_attention(text)
     result = ""
     for tag, weight in attentions:

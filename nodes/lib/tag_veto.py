@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """TagVeto: drop suggested tags that contradict the reference tags.
 
 Runtime port of playground/experiments/veto.ipynb. Built on
@@ -22,17 +21,20 @@ Judgment rules (see the notebook for the measurements behind each):
 
 lift_th is the only tuned parameter.
 """
-import os
 import re
 from collections import namedtuple
+from functools import lru_cache
 
-from . import artifact
+try:
+    from . import artifact, tag_alias
+except ImportError:  # flat import (docs/ scripts put nodes/lib on sys.path)
+    import artifact
+    import tag_alias
 
 E_MIN = 15.0
 DEFAULT_LIFT_TH = 0.1
 
-_VETO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "..", "resources", "tag_veto.npz")
+_VETO_PATH = artifact.resource("tag_veto.npz")
 # not committed (13MB); fetched from the data release on first use
 _VETO_URL = artifact.url_for("data-v3", "tag_veto.npz")
 _VETO_SHA256 = ("3fb3603bcadef8e8add34eb742836215e3c98264"
@@ -49,14 +51,68 @@ _SUBJECT_TAGS = {"solo", "solo_focus", "male_focus", "female_focus",
 
 
 def normalize(tag):
-    """Prompt token -> Danbooru form: '(blonde hair:1.2)' -> 'blonde_hair'."""
+    """Prompt token -> Danbooru form: '(blonde hair:1.2)' -> 'blonde_hair'.
+
+    Emphasis and weight are peeled off together, alternating until
+    nothing more comes away. Weight is anchored to the end of the
+    string, so stripping it once before the brackets leaves "(blonde
+    hair:1.2)" as "blonde_hair:1.2" -- a tag no vocabulary has, silently
+    dropping from the context the very tag the weight says matters most.
+
+    Renaming is deliberately not done here: which of a tag's spellings
+    is the live one is a property of the table being asked, so each
+    table folds the alias group onto its own vocabulary instead (see
+    tag_alias.expand_index).
+    """
     t = tag.strip().lower().replace("\\(", "(").replace("\\)", ")")
-    t = _WEIGHT_RE.sub("", t).strip()
-    while t.startswith("(") and t.endswith(")"):
-        t = t[1:-1].strip()
+    previous = None
+    while previous != t:
+        previous = t
+        t = _WEIGHT_RE.sub("", t).strip()
+        if t.startswith("(") and t.endswith(")"):
+            t = t[1:-1].strip()
     return re.sub(r"\s+", "_", t.replace("_", " ").strip())
 
 
+def split_prompt_tags(prompt):
+    """Prompt text -> its tags, with grouping brackets resolved.
+
+    Commas inside an emphasis group belong to the group, not to the
+    prompt: "1girl, (mother and son, age difference)" is three tags, not
+    a "(mother and son" and an "age difference)". Splitting on every
+    comma leaves those two halves unbalanced, and neither survives
+    normalize() -- the group vanishes from the context entirely, which
+    is the opposite of what wrapping it was meant to do.
+
+    Escaped brackets are part of the tag ("bar \\(place\\)") and never
+    group, so only unescaped ones open and close a level.
+    """
+    tags, depth, start = [], 0, 0
+    for i, ch in enumerate(prompt):
+        if ch == "(" and (i == 0 or prompt[i - 1] != "\\"):
+            depth += 1
+        elif ch == ")" and (i == 0 or prompt[i - 1] != "\\"):
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            tags.append(prompt[start:i])
+            start = i + 1
+    tags.append(prompt[start:])
+
+    out = []
+    for tag in tags:
+        stripped = tag.strip()
+        # a group is only worth reopening when it holds several tags;
+        # "(blonde hair:1.2)" is one tag and normalize() handles it
+        if stripped.startswith("(") and stripped.endswith(")") \
+                and "," in stripped:
+            inner = _WEIGHT_RE.sub("", stripped[1:-1].strip()).strip()
+            out.extend(split_prompt_tags(inner))
+        elif stripped:
+            out.append(tag)
+    return out
+
+
+@lru_cache(maxsize=None)
 def is_subject(tag):
     """Character-count/gender tags (1boy, 2girls, solo, ...)."""
     return tag in _SUBJECT_TAGS or bool(_SUBJECT_RE.match(tag))
@@ -78,7 +134,10 @@ class TagVeto:
         data = np.load(path)
 
         self.vocab = [str(t) for t in data["tags"]]
-        self.index = {t: i for i, t in enumerate(self.vocab)}
+        # aliases resolve to the same row, so a prompt may spell a tag
+        # any way Danbooru ever has; self.vocab stays the real names
+        self.index = tag_alias.expand_index(
+            {t: i for i, t in enumerate(self.vocab)})
         self._n = len(self.vocab)
 
         # exclusion pairs (lift < 0.5), stored as a sorted array of
@@ -91,6 +150,12 @@ class TagVeto:
 
         # composition tags: co-occurrence rows over the unfiltered corpus
         self._starved = {str(t): row for row, t in enumerate(data["starved"])}
+        # the same two facts per vocabulary entry, as arrays, so
+        # conflict_mask can ask them of every candidate at once
+        self._starved_row = np.array(
+            [self._starved.get(t, -1) for t in self.vocab], dtype=np.int64)
+        self._is_subject_row = np.array(
+            [is_subject(t) for t in self.vocab], dtype=bool)
         self._cooc_all = data["starved_cooc"]
         self._counts_all = data["counts_all"].astype(np.float64)
         self._n_all = float(data["n_all"])
@@ -138,13 +203,90 @@ class TagVeto:
 
     def conflict(self, cand, refs, lift_th=DEFAULT_LIFT_TH):
         """First reference tag that cand contradicts, or None."""
+        cand_subject = is_subject(cand)          # same for every ref
         for ref in refs:
-            if ref == cand or is_subject(ref) != is_subject(cand):
+            if ref == cand or is_subject(ref) != cand_subject:
                 continue
             lift = self.pair_lift(cand, ref)
             if lift is not None and lift < lift_th:
                 return ref
         return None
+
+    def conflict_mask(self, cand_ids, ref, lift_th=DEFAULT_LIFT_TH):
+        """Which of `cand_ids` contradict one reference tag.
+
+        Same verdict as conflict() gives for a single ref, computed over
+        the whole candidate array at once. The sampler asks this of
+        every candidate at every step, so as a Python loop over
+        pair_lift it was the most expensive thing it did; vectorised it
+        is ~40x cheaper for the same answers.
+
+        cand_ids are indices into this table's own vocabulary, -1 for
+        tags it does not know (never a conflict, since pair_lift returns
+        None for them and None means no veto). Returns a bool array of
+        the same length.
+        """
+        np = self._np
+        out = np.zeros(len(cand_ids), dtype=bool)
+        ri = self.index.get(ref)
+        if ri is None:
+            return out
+
+        # who gets judged: in the table, not the reference itself, and
+        # on the same side of the subject/not-subject line -- the guard
+        # conflict() applies one pair at a time
+        judged = ((cand_ids >= 0) & (cand_ids != ri)
+                  & (self._is_subject_row[np.maximum(cand_ids, 0)]
+                     == is_subject(ref)))
+        idx = np.nonzero(judged)[0]
+        if not len(idx):
+            return out
+        j = cand_ids[idx]
+
+        # Two sources, as in pair_lift: composition ("starved") tags are
+        # judged over the unfiltered corpus because the solo-post matrix
+        # has almost no rows for them, and either side being one sends
+        # the pair that way. Everything else comes from the stored pairs.
+        lift = np.ones(len(idx), dtype=np.float64)   # 1.0 = no veto
+        starved_ref = self._starved.get(ref)
+        starved_j = self._starved_row[j]
+        unfiltered = (np.ones(len(idx), dtype=bool) if starved_ref is not None
+                      else starved_j >= 0)
+
+        sel = np.nonzero(unfiltered)[0]
+        if len(sel):
+            # whichever side owns a row supplies it; when both do, the
+            # scalar path prefers the candidate's, so match that
+            own = starved_j[sel] >= 0
+            row = np.where(own, starved_j[sel], starved_ref or 0)
+            owner = np.where(own, j[sel], ri)
+            other = np.where(own, ri, j[sel])
+            observed = self._cooc_all[row, other].astype(np.float64)
+            expected = (self._counts_all[owner] * self._counts_all[other]
+                        / self._n_all)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                # below the E gate the corpus has no sample to judge with
+                lift[sel] = np.where(expected >= E_MIN, observed / expected,
+                                     1.0)
+
+        rest = np.nonzero(~unfiltered)[0]
+        if len(rest):
+            a = np.minimum(j[rest], ri).astype(np.int64)
+            b = np.maximum(j[rest], ri).astype(np.int64)
+            keys = a * self._n + b
+            pos = np.searchsorted(self._pair_keys, keys)
+            pos = np.minimum(pos, len(self._pair_keys) - 1)
+            hit = self._pair_keys[pos] == keys
+            lift[rest] = np.where(hit, self._pair_lift[pos], 1.0)
+
+        out[idx] = lift < lift_th
+        return out
+
+    def vocab_ids(self, tags):
+        """Map tags onto this table's vocabulary once, -1 where absent."""
+        np = self._np
+        return np.array([self.index.get(t, -1) for t in tags],
+                        dtype=np.int64)
 
     def bridge_for(self, a, b):
         """The tag naming this pair's situation, if the data has one."""
@@ -184,17 +326,11 @@ class TagVeto:
 
 # --- module-level API ------------------------------------------------------
 
-_VETO = None  # lazy singleton: TagVeto, or False if the artifact is missing
 
-
+@artifact.lazy
 def load_veto():
-    global _VETO
-    if _VETO is None:
-        try:
-            _VETO = TagVeto()
-        except Exception:
-            _VETO = False
-    return _VETO
+    """The veto table, or False when the artifact is missing."""
+    return TagVeto()
 
 
 def veto_available():

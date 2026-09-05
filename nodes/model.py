@@ -8,7 +8,7 @@ from comfy.utils import load_torch_file
 
 from .lib.utils import get_logger
 
-logger = get_logger(__file__)
+logger = get_logger()
 
 
 #################################################################
@@ -17,7 +17,6 @@ logger = get_logger(__file__)
 class BaseModel:
     """Base class for Model nodes."""
 
-    ...
 
 
 #################################################################

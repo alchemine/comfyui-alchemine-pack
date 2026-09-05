@@ -125,7 +125,7 @@ def test_subject_tags():
 
 
 def test_classify_tags_buckets():
-    from tag_classify import classify_tags
+    from tag_guard import classify_tags
     r = classify_tags("1boy, serafuku, sitting, smile, classroom, "
                       "silver hair, tennis racket, qqzzxx")
     assert r["characters"] == ["1boy"]

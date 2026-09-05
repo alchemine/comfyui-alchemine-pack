@@ -34,7 +34,7 @@ _ID_KEYS = ("prompt_id", "request_id", "job_id")
 
 def _read_all() -> dict:
     try:
-        with open(_LOCK_FILE, "r", encoding="utf-8") as f:
+        with open(_LOCK_FILE, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return {}

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tag -> category mapping data.
 
 Sources: Danbooru wiki tag groups (tag_group:attire, posture, face_tags,

@@ -10,7 +10,6 @@ from .lib.utils import any_typ
 class BaseFlowControl:
     """Base class for Flow Control nodes."""
 
-    ...
 
 
 #################################################################

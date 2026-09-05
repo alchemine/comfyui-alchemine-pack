@@ -9,7 +9,6 @@ from .lib.utils import exception_handler
 class BaseEvaluate:
     """Base class for Evaluate nodes."""
 
-    ...
 
 
 #################################################################

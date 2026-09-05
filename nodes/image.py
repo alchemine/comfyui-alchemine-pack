@@ -14,7 +14,6 @@ UPSCALE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic", "lanczos"]
 class BaseImage:
     """Base class for Image nodes."""
 
-    ...
 
 
 #################################################################

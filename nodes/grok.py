@@ -18,7 +18,7 @@ from comfy_execution.graph import ExecutionBlocker
 from .lib.utils import get_logger
 from .lib import joblock
 
-logger = get_logger(__file__)
+logger = get_logger()
 
 # This module's slot in the shared `jobs.lock` (the API nodes use "api").
 _KIND = "grok"

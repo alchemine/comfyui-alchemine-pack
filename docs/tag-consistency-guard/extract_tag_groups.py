@@ -73,7 +73,7 @@ def main():
     from_group_pages(mapping)
     from_tag_wikis(mapping)
     out = {t: sorted(gs) for t, gs in mapping.items() if t in vocab}
-    dst = os.path.join(HERE, "..", "..", "nodes", "resources", "tag_groups.json")
+    dst = os.path.join(HERE, "..", "..", "resources", "tag_groups.json")
     with open(dst, "w") as f:
         json.dump(out, f, indent=0, sort_keys=True, ensure_ascii=False)
     print("vocab %d, mapped %d (%.1f%%) -> %s"
