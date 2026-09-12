@@ -4,6 +4,7 @@ import random
 import re
 import numbers
 import textwrap
+from collections import defaultdict
 from functools import wraps
 
 import yaml
@@ -1678,6 +1679,7 @@ class TagGenerator(BasePrompt):
                 filter_tags, filter_subtags, cohesion, repeat_decay,
                 tuple(sorted(categories.items())))
 
+
 class ClassifyTags(BasePrompt):
     """Split prompt tags into coarse category outputs.
 
@@ -1716,12 +1718,194 @@ class ClassifyTags(BasePrompt):
         return (text,)
 
 
+# Families that read as one decorative motif, capped by shared first word.
+PREFIX_TAGS_DEFAULT = "fur-trimmed, lace-trimmed, ribbon-trimmed, frilled"
+
+
+class GroupTags(BasePrompt):
+    """Lay tags out in groups, one group per line.
+
+    Tags sharing a last word are gathered together, falling back to a shared
+    first word; anything unique stays where it is. Groups keep the order their
+    first member appeared in, and each group starts on a new line, so a long
+    prompt reads as a handful of themed blocks instead of one wall of commas.
+
+    Person and relationship tags (1girl, 2boys, hetero, ...) are hoisted to the
+    front as their own line, since a model reads the leading tags as the frame
+    for everything after them. This is the ordering `sort_special` used to do
+    upstream, done here instead -- grouping rewrites tag order wholesale, so a
+    sort applied before it does not survive.
+
+    Weights are ignored when deciding what groups with what, so
+    `(areola slip:1.1)` still joins `areola slip`.
+
+    `cap` trims each group to at most that many tags (0 leaves them all).
+    Capping lives here rather than upstream for two reasons: the groups it
+    trims are then the same groups the output shows, and, being the last node
+    in the chain, it counts what actually survived the blacklist instead of
+    reserving slots for tags about to be dropped. Colour-bearing tags are the
+    first to go, then the tail of the group.
+
+    Examples:
+        Input:  1girl, blue eyes, red eyes, standing, solo
+        Output: 1girl, solo,
+                blue eyes, red eyes,
+                standing
+    """
+
+    # Person count and relationship tags -- the ones worth reading first.
+    SPECIAL_PATTERN = (
+        r"([\d]+girls?|multiple girls|[\d]+boys?|multiple boys|couple|hetero|yuri)"
+    )
+    # Dropped first when a group is over cap: a second colour of the same thing
+    # adds less than a different thing.
+    COLORS = (
+        "black", "white", "aqua", "beige", "blue", "brown", "green", "grey",
+        "lavender", "maroon", "pink", "purple", "red", "silver", "violet",
+        "yellow", "multicolored",
+    )
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+            "special_first": ("BOOLEAN", {"default": True}),
+        },
+        "optional": {
+            "cap": ("INT", {"default": 0, "min": 0, "max": 100}),
+            "prefix_tags": ("STRING", {"default": PREFIX_TAGS_DEFAULT}),
+            "special_pattern": ("STRING", {"default": ""}),
+        },
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("processed_text",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    def _cap_prefixes(cls, tags: list[str], cap: int, prefixes: list[str]) -> list[str]:
+        """Keep at most `cap` tags per decorative prefix, in order of appearance."""
+        counts = defaultdict(int)
+        out = []
+        for t in tags:
+            bare = cls.remove_weight(t)
+            p = next((p for p in prefixes if bare.startswith(p)), None)
+            if p is not None:
+                if counts[p] >= cap:
+                    continue
+                counts[p] += 1
+            out.append(t)
+        return out
+
+    @classmethod
+    def _cap_group(cls, group: list[str], cap: int) -> list[str]:
+        """Trim one group to `cap`, shedding colour-bearing tags first, then the tail."""
+        if len(group) <= cap:
+            return group
+        has_color = lambda t: any(w in cls.COLORS for w in cls.remove_weight(t).split())
+        order = [i for i, t in enumerate(group) if has_color(t)]
+        order += range(len(group) - 1, -1, -1)
+        dropped = set(list(dict.fromkeys(order))[: len(group) - cap])
+        return [t for i, t in enumerate(group) if i not in dropped]
+
+    @classmethod
+    def _group(cls, tags: list[str]) -> list[list[str]]:
+        """Bucket tags by shared last word, else shared first word, else alone."""
+        keys = [cls.remove_weight(t).split(" ") for t in tags]
+        first_cnt, last_cnt = defaultdict(int), defaultdict(int)
+        for words in keys:
+            first_cnt[words[0]] += 1
+            last_cnt[words[-1]] += 1
+
+        def key_of(words, i):
+            if last_cnt[words[-1]] >= 2:
+                return ("s", words[-1])
+            if first_cnt[words[0]] >= 2:
+                return ("p", words[0])
+            return ("u", i)
+
+        groups, order = defaultdict(list), []
+        for i, (tag, words) in enumerate(zip(tags, keys)):
+            k = key_of(words, i)
+            if k not in groups:
+                order.append(k)
+            groups[k].append(tag)
+        return [groups[k] for k in order]
+
+    @classmethod
+    @exception_handler
+    def execute(
+        cls,
+        text: str,
+        special_first: bool = True,
+        cap: int = 0,
+        prefix_tags: str = PREFIX_TAGS_DEFAULT,
+        special_pattern: str = "",
+    ) -> tuple[str]:
+        """Cap each group, then lay the groups out one per line."""
+        tags = [t.strip() for t in cls.split_tags(text) if t.strip()]
+        if not tags:
+            return ("",)
+
+        if cap > 0:
+            prefixes = [p.strip() for p in prefix_tags.split(",") if p.strip()]
+            tags = cls._cap_prefixes(tags, cap, prefixes)
+
+        lines = []
+        if special_first:
+            pattern = special_pattern.strip() or cls.SPECIAL_PATTERN
+            specials = [t for t in tags if re.search(pattern, cls.remove_weight(t))]
+            if specials:
+                lines.append(specials)
+                tags = [t for t in tags if t not in specials]
+
+        for group in cls._group(tags):
+            lines.append(cls._cap_group(group, cap) if cap > 0 else group)
+        return (",\n".join(", ".join(line) for line in lines if line),)
+
+    @classmethod
+    def IS_CHANGED(
+        cls,
+        text: str,
+        special_first: bool = True,
+        cap: int = 0,
+        prefix_tags: str = PREFIX_TAGS_DEFAULT,
+        special_pattern: str = "",
+    ) -> tuple:
+        return (text, special_first, cap, prefix_tags, special_pattern)
+
+
+def _impact_process(text: str, seed: int):
+    """Expand text with Impact Pack's wildcard engine, or None if unavailable.
+
+    Impact's process() resolves both {a|b|c} groups and __wildcard__ file
+    references (plus $$ multi-select, nesting and # comments) in one pass, so
+    a TextPrompt can stand in for an ImpactWildcardProcessor node.
+    """
+    try:
+        from impact.wildcards import process as _process
+    except Exception:
+        try:
+            from ComfyUI_Impact_Pack.modules.impact.wildcards import process as _process
+        except Exception:
+            return None
+    try:
+        return _process(text, seed)
+    except Exception as e:
+        logger.warning(f"Impact wildcard expansion failed, falling back: {e}")
+        return None
+
+
 class TextPrompt(BasePrompt):
     """Plain text input node without dynamicPrompts, so {a|b} syntax doesn't
     cause the cursor to jump to the end while typing.
 
-    The {option1|option2|...} wildcard expansion is resolved on the Python side
-    at execution time (random pick per group, supports nesting).
+    Expansion happens on the Python side at execution time. When Impact Pack is
+    installed both {option1|option2|...} groups and __wildcard__ file
+    references are resolved; otherwise only {a|b|c} groups are, via the
+    built-in fallback.
+
+    Leaving `seed` unconnected pins it to 0, so the same text always expands the
+    same way; connect a seed to reroll the picks per run.
     """
 
     INPUT_TYPES = lambda: {
@@ -1739,7 +1923,15 @@ class TextPrompt(BasePrompt):
 
     @classmethod
     @exception_handler
-    def execute(cls, text: str, seed: int = 0) -> tuple:
+    def execute(cls, text: str, seed: int | None = None) -> tuple:
+        # No seed wired in -> 0, a fixed draw rather than whatever the shared
+        # RNG happens to hold. Impact's process() seeds the global random module,
+        # so an unseeded call would also drift with unrelated nodes' expansions.
+        seed = 0 if seed is None else seed
+        expanded = _impact_process(text, seed)
+        if expanded is not None:
+            return (expanded,)
+
         import random as _random
         rng = _random.Random(seed)
 
@@ -1757,8 +1949,8 @@ class TextPrompt(BasePrompt):
         return (_resolve(text),)
 
     @classmethod
-    def IS_CHANGED(cls, text: str, seed: int = 0) -> tuple:
-        return (text, seed)
+    def IS_CHANGED(cls, text: str, seed: int | None = None) -> tuple:
+        return (text, 0 if seed is None else seed)
 
 
 if __name__ == "__main__":

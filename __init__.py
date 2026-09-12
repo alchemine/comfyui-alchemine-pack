@@ -28,6 +28,7 @@ from .nodes.prompt import (
     ConsistencyGuard,
     TagGenerator,
     ClassifyTags,
+    GroupTags,
     TextPrompt,
 )
 
@@ -74,6 +75,7 @@ NODE_CLASS_MAPPINGS = {
     "ConsistencyGuard": ConsistencyGuard,
     "TagGenerator": TagGenerator,
     "ClassifyTags": ClassifyTags,
+    "GroupTags": GroupTags,
     "TextPrompt": TextPrompt,
 }
 
@@ -120,6 +122,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ConsistencyGuard": "Consistency Guard",
     "TagGenerator": "Tag Generator",
     "ClassifyTags": "Classify Tags",
+    "GroupTags": "Group Tags",
     "TextPrompt": "Text Prompt",
 }
 
