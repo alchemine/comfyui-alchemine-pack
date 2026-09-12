@@ -29,7 +29,11 @@
 | **SDXLAutoBreak** | 각 세그먼트가 75토큰 이내가 되도록 자동으로 BREAK를 삽입합니다 (SDXL 전용). |
 | **SubstituteTags** | 정규식 기반 태그 치환. 조건부 실행(`run_if`, `skip_if`) 지원. |
 | **SeparateLoraTags** | 프롬프트에서 lora 태그(`<lora:...>`)를 분리합니다. 동일한 lora가 여러 번 등장하면 마지막 가중치를 사용합니다. |
+| **TagGenerator** | Danbooru 동시출현 통계에서 어울리는 태그를 샘플링해 프롬프트를 확장합니다. 6개 카테고리(characters, pose, expressions, body, clothes, background)마다 토글과 `_share` 상한(`0.3` = 최대 30%, `-1` = 무제한)이 있어 한 축이 출력을 독점하지 않습니다. `characters`는 주어 자체(`1girl`, `solo` 등)를 담당하며 뒤따르는 태그의 성별을 고정합니다. `cohesion`은 이전 선택이 다음 선택에 미치는 영향(1.0 = 하나의 장면, 0 = 서로 무관), `rating`은 수위 상한입니다. 출력은 ProcessTags 파이프라인을 거치고 `n`은 살아남은 태그 수입니다. |
+| **ConsistencyGuard** | 수작업 충돌 목록 대신 동시출현 lift 기준으로, 고정 태그와 모순되는 생성 태그를 제거합니다. |
+| **ClassifyTags** | 프롬프트를 대분류(characters, clothes, body, expression, pose, background, objects, nsfw, others)로 나눠 출력합니다. |
 | **GroupTags** | 태그를 주제별 그룹으로 묶어 한 줄에 한 그룹씩 배치합니다. 마지막(또는 첫) 단어가 같은 태그끼리 모이고, 인물/관계 태그(`1girl`, `hetero` 등)는 맨 앞 줄로 끌어올립니다. |
+| **TextPrompt** | `dynamicPrompts`를 끈 순수 멀티라인 텍스트 입력. `{a|b}`를 입력해도 커서가 끝으로 튀지 않으며, 와일드카드는 실행 시점에 Python에서 확장됩니다. |
 
 #### ProcessTags
 
@@ -121,6 +125,58 @@
 |------|------|
 | `text_without_lora` | lora 태그가 제거된 텍스트 (원본 공백/줄바꿈 최대한 유지) |
 | `text_with_lora` | 중복 제거된 lora 태그들을 공백으로 join한 문자열 (동일 lora는 마지막 가중치 사용) |
+
+---
+
+#### TextPrompt
+
+ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중에 필드를
+재파싱합니다. `{a|b}`를 타이핑할 때마다 커서가 끝으로 이동하는 원인이죠. 이
+노드는 그 플래그를 꺼서 위젯을 일반 텍스트 박스처럼 동작하게 하고, 대신
+`{option1|option2|...}` 문법을 실행 시점에 Python에서 해석합니다(그룹당 무작위
+1개 선택, 중첩 지원).
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `text` | STRING | (필수) | 멀티라인 프롬프트. `{a|b}` 그룹은 실행 시 확장 |
+| `seed` | INT | 0 | 입력 전용. 와일드카드 선택을 고정해 재현 가능 |
+
+| 출력 | 설명 |
+|------|------|
+| `text` | 모든 와일드카드 그룹이 해석된 프롬프트 |
+
+---
+
+### 이미지 노드 (`AlcheminePack/Image`)
+
+#### AdjustImage
+
+색 보정, 샤픈/디노이즈 필터 모음, 선택적 리사이즈를 한 노드에 담았습니다. 모든
+값의 기본이 무변화라 슬라이더를 움직이기 전까지는 이미지를 그대로 통과시킵니다.
+모든 연산이 이미지가 있는 디바이스의 torch 연산이라 GPU 텐서가 numpy를 오가지
+않으며, RGB만 처리하고 알파 채널은 그대로 보존합니다.
+
+처리 순서는 의도적으로 고정입니다: brightness → contrast → saturation → gamma →
+denoise → edge enhance → CAS → local contrast → resize. 디노이즈가 샤픈보다
+먼저라, 제거하려던 노이즈를 샤프너가 증폭하는 일이 없습니다.
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `image` | IMAGE | (필수) | 입력 이미지 |
+| `brightness` | FLOAT | 1.0 | 1.0 = 무변화, <1.0 어둡게, >1.0 밝게 |
+| `contrast` | FLOAT | 1.0 | 중간 회색 0.5 기준 스케일 |
+| `saturation` | FLOAT | 1.0 | 0.0 = 흑백, >1.0 = 더 선명하게 |
+| `gamma` | FLOAT | 1.0 | <1.0 중간톤 밝게, >1.0 어둡게 |
+| `edge_enhance` | FLOAT | 0.0 | 고정 엣지 강화 커널의 블렌드 비율 |
+| `cas` | FLOAT | 0.0 | Contrast Adaptive Sharpening (AMD FidelityFX). 평탄한 영역을 더, 이미 선명한 엣지는 덜 샤픈해 선화가 바스러지지 않음 |
+| `local_contrast` | FLOAT | 0.0 | 큰 반경 언샤프("clarity"). 중간 스케일의 깊이감 추가 |
+| `denoise` | FLOAT | 0.0 | 엣지 보존 bilateral 필터. 선은 유지하며 평탄 노이즈와 밴딩 제거 |
+| `upscale_method` | COMBO | lanczos | `scale_by` != 1.0일 때의 리샘플링 방식 |
+| `scale_by` | FLOAT | 1.0 | 배율. 1.0 = 리사이즈 없음 |
+
+| 출력 | 설명 |
+|------|------|
+| `image` | 보정된 이미지 |
 
 ---
 
