@@ -29,6 +29,7 @@
 | **SDXLAutoBreak** | 각 세그먼트가 75토큰 이내가 되도록 자동으로 BREAK를 삽입합니다 (SDXL 전용). |
 | **SubstituteTags** | 정규식 기반 태그 치환. 조건부 실행(`run_if`, `skip_if`) 지원. |
 | **SeparateLoraTags** | 프롬프트에서 lora 태그(`<lora:...>`)를 분리합니다. 동일한 lora가 여러 번 등장하면 마지막 가중치를 사용합니다. |
+| **GroupTags** | 태그를 주제별 그룹으로 묶어 한 줄에 한 그룹씩 배치합니다. 마지막(또는 첫) 단어가 같은 태그끼리 모이고, 인물/관계 태그(`1girl`, `hetero` 등)는 맨 앞 줄로 끌어올립니다. |
 
 #### ProcessTags
 
@@ -122,6 +123,38 @@
 | `text_with_lora` | 중복 제거된 lora 태그들을 공백으로 join한 문자열 (동일 lora는 마지막 가중치 사용) |
 
 ---
+
+### DAAM 노드 (`AlcheminePack/DAAM`)
+
+크로스 어텐션 히트맵([DAAM](https://arxiv.org/abs/2210.04885))으로 프롬프트의 어떤 태그가 이미지의 어느 부분을 만들었는지 시각화합니다.
+
+| 노드 | 설명 |
+|------|------|
+| **Sampler Custom (DAAM)** | `SamplerCustom`과 동일한 입력에 크로스 어텐션 히트맵 출력(`pos_heatmaps` / `neg_heatmaps`)이 추가된 노드. 히트맵 출력을 연결하지 않으면 어텐션 패치를 아예 건너뛰므로 기본 샘플러와 비용이 같습니다. |
+| **DAAM Tag Explorer** | 태그 단위 인터랙티브 어텐션 뷰어. 프롬프트를 콤마 기준 태그로 분리(BREAK 청크, `embedding:이름` 처리)해 히트맵과 대응시킵니다. |
+
+#### Sampler Custom (DAAM)
+
+- **입력**: `SamplerCustom`과 동일 (`model`, `add_noise`, `noise_seed`, `cfg`, `positive`, `negative`, `sampler`, `sigmas`, `latent_image`)
+- **출력**: `output`, `denoised_output`, `pos_heatmaps`, `neg_heatmaps`
+- 히트맵은 GPU에서 누적되며 이미지/16 격자(SDXL의 가장 정밀한 크로스 어텐션 해상도)에 저장되고, 전체 레이어·스텝에 걸쳐 평균됩니다.
+
+#### DAAM Tag Explorer
+
+- **입력**: `clip`, `text`(인코딩에 쓰인 것과 동일한 프롬프트 문자열, BREAK 포함), `heatmaps`(Sampler Custom (DAAM)의 출력), `images`(디코딩된 이미지)
+- **인터랙션**:
+  - 이미지 호버: 커서 위치에서 각 태그의 어텐션 점유율이 바 그래프로 실시간 표시 (N개 태그 균등 분포 대비 파랑 > 2/N, 노랑 > 1/N)
+  - 이미지 클릭: 그 지점을 지배하는 태그 선택
+  - 패널의 태그 클릭: 해당 히트맵을 이미지에 오버레이 (다중 선택 시 평균, jet 컬러맵 + 컬러바)
+  - `strength` / `smooth` 슬라이더, 어텐션 셀 격자와 호버 셀 하이라이트
+- 히트맵은 이미지당 작은 `.npy` 하나로 브라우저에 전달되어 모든 인터랙션이 클라이언트에서 동작합니다.
+- `text` 입력은 반드시 컨디셔닝을 만든 것과 동일한 문자열이어야 합니다(같은 업스트림 노드에서 분기). 다르면 태그 인덱스가 어긋납니다.
+
+### Everywhere 노드 (`AlcheminePack/Everywhere`)
+
+| 노드 | 설명 |
+|------|------|
+| **Everywhere** | 고정된 이름의 입력(`model`, `clip`, `vae`, `positive`, `negative`, `latent_image`, `seed`, `blacklist`)을 갖는 [cg-use-everywhere](https://github.com/chrisgoringe/cg-use-everywhere) 브로드캐스터. 입력 이름이 고정되어 UE의 이름 기반 라우팅이 유지되므로, 두 컨디셔닝을 수동 이름 변경 없이 구분해 전달합니다. cg-use-everywhere 필요. |
 
 ### Danbooru 노드 (`AlcheminePack/Danbooru`)
 

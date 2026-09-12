@@ -6,9 +6,10 @@ description = """Prompt filterings, Danbooru, LLM(Inference), API, lazy executio
 [a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png): OpenAI-compatible API Inference
 [a/API](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-API.png): remote ComfyUI API execution
 [a/FlowControl](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png): lazy execution
+DAAM: attention heatmap sampler and interactive per-tag explorer
 Python evaluate, Grok, Cached LoRA Tag loader, etc."""
 
-version = "2.7.0"
+version = "3.0.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [

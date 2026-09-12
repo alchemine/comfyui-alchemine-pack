@@ -32,6 +32,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **TagGenerator** | Extends a prompt with tags that go with it, sampled from Danbooru co-occurrence. Six categories (characters, pose, expressions, body, clothes, background) each get a toggle and a `_share` cap -- `0.3` at most 30% of the tags, `-1` uncapped -- balanced by default (body 0.3, pose 0.2, clothes 0.2, characters 0.1, expressions 0.1, background 0.1) so one axis cannot take over the output; background also carries objects and compositions. `characters` owns the subject itself (`1girl`, `solo`, `2girls`), so it is what anchors the gender of everything drawn after it. `cohesion` is how much a pick conditions the next (1.0 = one scene that can run away with itself, 0 = tags with nothing to do with each other); `rating` caps explicitness. Output runs through the ProcessTags pipeline, and `n` counts the tags that survive it. |
 | **ConsistencyGuard** | Drops generated tags that contradict the fixed ones, judged by co-occurrence lift rather than a hand-written conflict list. |
 | **ClassifyTags** | Splits a prompt into coarse buckets (characters, clothes, body, expression, pose, background, objects, nsfw, others). |
+| **GroupTags** | Lays tags out in themed groups, one group per line. Tags sharing a last (or first) word gather together; person/relationship tags (`1girl`, `hetero`, ...) are hoisted to a leading line of their own. |
 | **TextPrompt** | Plain multiline text input with `dynamicPrompts` off, so typing `{a|b}` no longer jumps the cursor to the end. Wildcards are expanded in Python instead. |
 
 #### ProcessTags
@@ -177,6 +178,38 @@ sharpening so the sharpeners do not amplify the noise they were meant to remove.
 | `image` | Adjusted image |
 
 ---
+
+### DAAM Nodes (`AlcheminePack/DAAM`)
+
+Visualize which prompt tag shaped which part of the image, via cross-attention heatmaps ([DAAM](https://arxiv.org/abs/2210.04885)).
+
+| Node | Description |
+|------|-------------|
+| **Sampler Custom (DAAM)** | Drop-in replacement for `SamplerCustom` that also captures cross-attention heatmaps (`pos_heatmaps` / `neg_heatmaps`). With no heatmap output connected the attention patch is skipped entirely, so it costs exactly what the stock sampler costs. |
+| **DAAM Tag Explorer** | Interactive per-tag attention viewer. Splits the prompt into comma-separated tags (BREAK chunks and `embedding:name` handled) and renders them against the heatmaps. |
+
+#### Sampler Custom (DAAM)
+
+- **Input**: same as `SamplerCustom` (`model`, `add_noise`, `noise_seed`, `cfg`, `positive`, `negative`, `sampler`, `sigmas`, `latent_image`)
+- **Output**: `output`, `denoised_output`, `pos_heatmaps`, `neg_heatmaps`
+- Heatmaps are accumulated on the GPU and stored on the image/16 grid — exactly the finest cross-attention resolution of SDXL — then averaged over all layers and steps.
+
+#### DAAM Tag Explorer
+
+- **Input**: `clip`, `text` (the same prompt string that was encoded, BREAK included), `heatmaps` (from Sampler Custom (DAAM)), `images` (decoded)
+- **Interaction**:
+  - Hover the image: a live bar chart shows each tag's share of the attention under the cursor (blue > 2/N, yellow > 1/N of an even split over N tags)
+  - Click the image: selects the tag dominating that spot
+  - Click tags in the panel: overlays their heatmap on the image (multi-select averages; jet colormap with a colorbar)
+  - `strength` / `smooth` sliders, attention-cell grid with hover highlight
+- The maps travel to the browser as one small `.npy` per image, so all interaction runs client-side.
+- The `text` input must be the exact string the conditioning was encoded from (feed both from the same upstream node), or the tag indices will not line up.
+
+### Everywhere Nodes (`AlcheminePack/Everywhere`)
+
+| Node | Description |
+|------|-------------|
+| **Everywhere** | A [cg-use-everywhere](https://github.com/chrisgoringe/cg-use-everywhere) broadcaster with fixed, named inputs (`model`, `clip`, `vae`, `positive`, `negative`, `latent_image`, `seed`, `blacklist`). The pinned input names keep UE's name-based routing working, so the two conditionings stay apart without renaming slots by hand. Requires cg-use-everywhere. |
 
 ### Danbooru Nodes (`AlcheminePack/Danbooru`)
 
