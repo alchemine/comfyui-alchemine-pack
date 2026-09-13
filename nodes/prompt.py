@@ -1,6 +1,7 @@
 """Nodes in AlcheminePack/Prompt."""
 
 import re
+import random
 import numbers
 import textwrap
 from collections import defaultdict
@@ -23,9 +24,9 @@ from .lib.tag_suggest import (suggest_tags, suggest_available,
 
 logger = get_logger()
 
-# Danbooru rating names, mildest first; the node also offers "all",
-# which is not one of these but the absence of a request -- see the
-# widget tooltip.
+# Danbooru rating names, mildest first. The node offers two more that
+# are not ratings: "all" asks for no cap at all, and "random" draws one
+# of these per seed, uniformly -- see the widget tooltip.
 RATINGS = ("general", "sensitive", "questionable", "explicit")
 
 # TagGenerator's category widgets, in the order they appear on the node:
@@ -1462,7 +1463,7 @@ class TagGenerator(BasePrompt):
                            "it just moved on. Exact repeats are blocked "
                            "outright and are not what this controls.",
             }),
-            "rating": (list(RATINGS) + ["all"], {
+            "rating": (list(RATINGS) + ["all", "random"], {
                 "default": "all",
                 "tooltip": "Explicitness ceiling, on both halves of the "
                            "statistic: the co-occurrence tables come from "
@@ -1473,7 +1474,10 @@ class TagGenerator(BasePrompt):
                            "merely permit rather than lean. 'all' caps and "
                            "favours nothing, leaving the prompt to decide: "
                            "a nude prompt draws explicit tags, a school "
-                           "uniform one draws none.",
+                           "uniform one draws none. 'random' picks one of "
+                           "the four from the seed instead, each equally "
+                           "likely -- a capped draw every time, but a "
+                           "different cap on the next seed.",
             }),
             "temperature": ("FLOAT", {
                 "default": 1.0, "min": 0.0, "max": 5.0, "step": 0.05,
@@ -1647,10 +1651,15 @@ class TagGenerator(BasePrompt):
         **categories: float,
     ) -> tuple[str]:
         """Append companion tags to a prompt."""
-        # "all" reaches the sampler as itself: it is the one value that
-        # caps nothing and favours nothing, so the prompt is left to
-        # decide how explicit the tags are. The rest go down in danbooru
-        # letter form: g/s/q/e.
+        # "random" is resolved here rather than in the sampler: drawn
+        # from the seed, so a workflow stays reproducible and a new seed
+        # rerolls the cap along with the tags. "all" reaches the sampler
+        # as itself -- the one value that caps nothing and favours
+        # nothing, leaving the prompt to decide how explicit the tags
+        # are. The rest go down in danbooru letter form: g/s/q/e.
+        if rating == "random":
+            rating = random.Random(seed).choice(RATINGS)
+            logger.debug("[TagGenerator] random rating -> %s", rating)
         rating = rating if rating == "all" else rating[0]
         momentum, repetition_penalty = _legacy_knobs(
             categories, momentum, repetition_penalty)

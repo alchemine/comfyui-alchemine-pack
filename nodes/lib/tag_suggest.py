@@ -20,7 +20,8 @@ import re
 from . import (artifact, tag_alias, tag_avoid, tag_category, tag_solo,
                tag_subject, tag_veto)
 from .tag_category import RATING_ORDER
-from .tag_veto import normalize, split_prompt_tags, DEFAULT_LIFT_TH
+from .tag_veto import (normalize, split_prompt_tags, weight_of,
+                       DEFAULT_LIFT_TH)
 from .utils import get_logger
 
 DEFAULT_MIN_COUNT = 5000
@@ -94,6 +95,24 @@ _PARTICLES = frozenset("""
 """.split())
 
 
+# Words that open a tag and name the axis themselves, leaving the head
+# noun to name the variation. "after sex", "after vaginal" and "after
+# anal" are three spellings of one idea; so are "holding ball",
+# "holding beachball" and "holding swim ring", and a pair of hands can
+# only oblige twice. Nothing else here looks at the opener, so without
+# this each lands in its own slot and a beach draw comes back holding
+# four things.
+#
+# "holding" alone spells 468 tags, the largest such family in the
+# vocabulary. Colours open more tags still -- 180 begin with "black" --
+# but a colour is not an axis: "blue skin" and "blue eyes" vary along
+# skin and eyes, which is exactly what the head noun already says.
+# "reverse" is out for the same reason ("reverse trap" and "reverse
+# cowgirl position" share nothing), and "post" and "mid" spell too few
+# tags to earn a slot.
+_OPENERS = frozenset({"after", "imminent", "implied", "incoming", "holding"})
+
+
 def _depluralize(word):
     """Crude singular, so "hands_on_own_hip" and "hand_on_own_face"
     land in one slot. Short words are left alone: "ass" and "grass" are
@@ -104,17 +123,74 @@ def _depluralize(word):
 
 
 def _slot_keys(tag):
-    """The one or two slots a tag occupies. See TagSuggest.slots."""
+    """The one or two slots a tag occupies. See TagSuggest.slots.
+
+    The linking word splits the tag but does not join the key. What is
+    being respelled on the left of "cum in pussy" is cum, not "in": the
+    same subject carries over to "cum on breasts", and keying on the
+    particle would file the two apart and let a draw spend seven picks
+    on one noun. The same holds for "hand up" beside "hands on own
+    face", or "looking up" beside "looking back".
+    """
     words = tag.split("_")
+    # the bare opener belongs to the family it opens: "holding" says
+    # the hands are busy just as "holding ball" does, and leaving it in
+    # a slot of its own let it ride along with three of them
+    stage = (("M", words[0]),) if words[0] in _OPENERS else ()
+    if stage and len(words) == 1:
+        return stage                          # the opener is the whole tag
     at = next((i for i, w in enumerate(words)
                if i > 0 and w in _PARTICLES), None)
     if at is None:
-        return (("W", _depluralize(words[-1])),)
-    left = ("L", words[at], "_".join(_depluralize(w) for w in words[:at]))
+        return stage + (("W", _depluralize(words[-1])),)
+    left = ("L", "_".join(_depluralize(w) for w in words[:at]))
     if at == len(words) - 1:                  # particle, nothing follows
-        return (left,)
-    return (left, ("R", words[at], "_".join(words[at + 1:])))
+        return stage + (left,)
+    return stage + (left, ("R", "_".join(words[at + 1:])))
 
+
+# Cold start: what to seed a prompt that named nothing.
+#
+# A tag's anchor strength is the mean log lift of its strongest
+# neighbours -- how much the corpus has to say once it is on the table.
+# It sorts the vocabulary in a way nothing else here does: "1girl" 0.31,
+# "solo" 0.43, "smile" 0.91 against "beach" 3.53, "kitchen" 4.07,
+# "guitar" 4.57. The first group is too common to imply anything, which
+# is why an empty prompt used to come back as a frequency list; the
+# second grows a scene, one pick pulling the next.
+#
+# One anchor, not two: a second one competes with the first, and the
+# picks that score well against both belong to neither scene. Drawn
+# from background and objects only -- clothes anchors collapse into
+# whatever outfit owns them (three draws in ten came back as bunnysuits)
+# while a place or a thing leaves the wardrobe open.
+_ANCHOR_CATEGORIES = ("background", "objects")
+_ANCHOR_MIN_COUNT = 20000            # common enough to be a familiar scene
+_ANCHOR_MIN_STRENGTH = 3.4           # ~the top quartile of that pool
+_ANCHOR_NEIGHBOURS = 32              # how many neighbours the mean spans
+_ANCHOR_MAX_LEVEL = 1                # sensitive; rating still caps on top
+
+# A prompt that names a scene but nobody in it still has a subject; it
+# just has not said so -- and an empty prompt says even less. Left
+# alone, "beach, dynamic pose" scores against nothing and comes back
+# with bara, pectorals and male swimwear, which is not what anyone
+# asking for a beach meant. So a girl is assumed present.
+#
+# Which girl tag is drawn rather than fixed. Pinning "1girl" would
+# settle the count as well as the gender, and the subject table reads
+# that as a ruling: with "1girl" in the context, "2girls", "3girls" and
+# "multiple girls" are all vetoed outright. Drawing from the corpus
+# shares instead leaves a crowd reachable -- one seed in three is not
+# a lone girl.
+#
+# Context only, and the solo guard never sees it: "one girl is in the
+# picture" is not "one person is". The same premise serves the empty
+# prompt -- it once assumed "1girl, solo" there, which read as one
+# person and vetoed every two-character tag, a rule the caller never
+# asked for and the other path did not apply.
+_IMPLIED_FEMALE = ("1girl", "2girls", "3girls", "4girls", "5girls",
+                   "6+girls", "multiple_girls")
+_GIRL_COUNT_RE = re.compile(r"^\d+\+?girls?$|^multiple_girls$")
 
 _SUGGEST_PATH = artifact.resource("suggest_v1.1.npz")
 # not committed (106MB); fetched from the data release on first use.
@@ -179,6 +255,7 @@ class TagSuggest:
         self._blacklist = None       # (pattern, mask) of the last regex
         self._slots = None           # lazy (slot ids per tag, count)
         self._solo = None            # lazy (multi-person, male) vetoes
+        self._anchors = None         # lazy cold-start anchor pool
         self._subject = None         # lazy subject-conjunction table
         self._veto_ids = None        # lazy vocab mapped onto TagVeto's
 
@@ -201,7 +278,10 @@ class TagSuggest:
         two -- "hands_on_own_face" is both a hands tag and an own_face
         tag, so it collides with "hands_on_own_head" on the left and
         with "blood_on_face" on the right. Both are real runaways: one
-        pair of hands in three places, three things on one face.
+        pair of hands in three places, three things on one face. The
+        word doing the splitting is not part of either key: "cum_in_ass"
+        and "cum_on_breasts" vary along the same axis, and filing them
+        under different prepositions loses that.
 
         With nothing to its right the word is a particle rather than a
         preposition ("looking_up", "tongue_out") and only the left side
@@ -211,6 +291,12 @@ class TagSuggest:
         Everything else keeps the old rule, the last word: "blue_skin"
         and "two-tone_skin" share a slot, "blue_skin" and "blue_eyes"
         do not.
+
+        On top of either, an opening word that names the axis is a slot
+        of its own (see _OPENERS): "after_sex" / "after_vaginal" and
+        "holding_ball" / "holding_beachball" vary along the opener, and
+        the head noun cannot see it. A tag can therefore hold up to
+        three.
 
         The three kinds are kept in separate namespaces, so the slot a
         prepositional tag takes from its right side never meets a plain
@@ -222,7 +308,8 @@ class TagSuggest:
         if self._slots is None:
             np = self._np
             index = {}
-            ids = np.zeros((len(self.vocab), 2), dtype=np.int32)
+            width = max(len(_slot_keys(t)) for t in self.vocab)
+            ids = np.zeros((len(self.vocab), width), dtype=np.int32)
             index[None] = 0                           # the empty slot
             for i, tag in enumerate(self.vocab):
                 for k, key in enumerate(_slot_keys(tag)):
@@ -239,6 +326,63 @@ class TagSuggest:
         if self._solo is None:
             self._solo = tag_solo.masks(self.vocab)
         return self._solo
+
+    def anchors(self, tier):
+        """(anchor vocab ids, draw probability) for the cold start.
+
+        Anchor strength is a property of the tables, so the pool is
+        built once. Weighted by corpus count, which keeps the draw on
+        scenes anyone would recognise rather than the long tail.
+        """
+        if self._anchors is None:
+            np = self._np
+            source, (cat_of, level_of) = self.labels()
+            if source is None or cat_of is None:
+                self._anchors = ((), None)
+                return self._anchors
+            ranks = [source.names.index(n) for n in _ANCHOR_CATEGORIES
+                     if n in source.names]
+            lift = tier["lift"]
+            top = np.sort(lift, axis=1)[:, -_ANCHOR_NEIGHBOURS:]
+            strength = np.log(np.maximum(top, _MIN_REPEL_LIFT)).mean(1)
+            pool = np.nonzero(
+                (tier["counts"] >= _ANCHOR_MIN_COUNT)
+                & (strength >= _ANCHOR_MIN_STRENGTH)
+                & (level_of <= _ANCHOR_MAX_LEVEL)
+                & np.isin(cat_of, ranks))[0]
+            if not len(pool):
+                self._anchors = ((), None)
+            else:
+                w = tier["counts"][pool].astype(np.float64)
+                self._anchors = (pool, w / w.sum())
+        return self._anchors
+
+    def _cold_start(self, rng, tier, allowed, cat_of):
+        """Seed tags for a prompt that named none: (context, emitted).
+
+        The anchor is emitted -- it is the scene's subject, not a hidden
+        seed. A drawn character tag is emitted for the same reason.
+        With that category off nobody is named at all, and the implied
+        girl in suggest() carries the premise instead.
+        """
+        np = self._np
+        pool, weights = self.anchors(tier)
+        if not len(pool):
+            return [], []
+        emitted = [self.vocab[int(rng.choice(pool, p=weights))]]
+
+        joint = self._subject_joint()
+        source, _ = self.labels()
+        drawing_characters = (
+            joint is not None and cat_of is not None
+            and (allowed is None
+                 or (source is not None and "characters" in source.names
+                     and source.names.index("characters") in allowed)))
+        if drawing_characters:
+            subjects = np.asarray(sorted(joint.subject_ids), dtype=np.int64)
+            w = tier["counts"][subjects].astype(np.float64)
+            emitted.append(self.vocab[int(rng.choice(subjects, p=w / w.sum()))])
+        return emitted, emitted
 
     def _tier(self, rating):
         return self._tiers.get(rating, self._tiers["e"])
@@ -427,10 +571,17 @@ class TagSuggest:
         np = self._np
         tier = self._tier(rating)
         counts = tier["counts"]
+        # A weight at or below zero is the prompt asking for less of
+        # something, so the tag joins the context with its sign flipped
+        # rather than as evidence for itself: "(particles:-1.2)" should
+        # cost light particles and everything that travels with them,
+        # not recommend them. Magnitude scales the push.
+        weights = [weight_of(t) for t in inputs]
         tags = [normalize(t) for t in inputs]
-        ids = [self.index[t] for t in tags if t in self.index]
-        if not ids:
-            return []
+        ids = [self.index[t] for t, w in zip(tags, weights)
+               if w > 0 and t in self.index]
+        avoid = [(self.index[t], -w) for t, w in zip(tags, weights)
+                 if w <= 0 and t in self.index]
         rng = np.random.default_rng(seed)
 
         source, (cat_of, level_of) = self.labels()
@@ -438,6 +589,22 @@ class TagSuggest:
                                                         source.names)
                           if source else (None, None))
         used = {}
+
+        # Nothing to condition on: pick something to be about. Without
+        # this the prompt is not merely empty but uninformative, and the
+        # draw degenerates into the corpus frequency order (see
+        # _cold_start and the anchor constants).
+        seeded = []
+        if not ids:
+            tags, seeded = self._cold_start(rng, tier, allowed, cat_of)
+            ids = [self.index[t] for t in tags if t in self.index]
+            if not ids:
+                return []
+        if not any(_GIRL_COUNT_RE.match(t) for t in tags):
+            pool = [self.index[t] for t in _IMPLIED_FEMALE if t in self.index]
+            if pool:
+                w = counts[pool].astype(np.float64)
+                ids = ids + [int(rng.choice(pool, p=w / w.sum()))]
 
         if m <= 0:
             m = max(0, self._draw_length(rng, tier) - len(tags))
@@ -457,17 +624,25 @@ class TagSuggest:
         eligible = self._eligible(counts, min_count, rating, level_of,
                                   cat_of, allowed, blacklist)
         log_lift, log_repel = self._log_lift_sum(ids, tier)
+        for j, strength in avoid:
+            gain, _ = self._log_lift_sum([j], tier)
+            log_lift -= strength * gain
 
         # One mask for everything a candidate can be ruled out by, since
         # the loop only ever asks whether it is ruled out: tags already
         # in the prompt, tags the corpus shows the context avoiding,
         # tags the subject tags rule out together, tags TagVeto judges
         # against a reference. All four only ever grow.
-        chosen, refs = [], [t for t in tags if t]
+        # a seeded anchor is already part of the answer, so it takes a
+        # slot of m rather than arriving on top of it
+        chosen, refs = list(seeded), [t for t, w in zip(tags, weights)
+                                     if t and w > 0]
         banned = self._repel_veto(ids, tier, lift_th, avoid_alpha)
         for t in refs:
             if t in self.index:
                 banned[self.index[t]] = True
+        for j, _ in avoid:                    # asked for less, not none --
+            banned[j] = True                  # but never more
 
         # what two subject tags rule out between them -- the one thing
         # the pairwise tables cannot say (see tag_subject). Recomputed
@@ -512,7 +687,7 @@ class TagSuggest:
             np.add.at(slot_used, slot_of[ids].ravel(), 1)
             slot_used[0] = 0                      # the empty slot never hits
 
-        for _ in range(m):
+        for _ in range(max(0, m - len(chosen))):
             if veto:
                 # one vectorised pass per new reference beats a Python
                 # call per candidate by ~40x, so the whole vocabulary is

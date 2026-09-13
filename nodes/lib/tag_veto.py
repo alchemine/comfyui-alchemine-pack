@@ -43,7 +43,7 @@ _VETO_SHA256 = ("3fb3603bcadef8e8add34eb742836215e3c98264"
 
 # --- tag normalization -----------------------------------------------------
 
-_WEIGHT_RE = re.compile(r":\s*[0-9.]+\s*$")
+_WEIGHT_RE = re.compile(r":\s*-?[0-9.]+\s*$")
 _SUBJECT_RE = re.compile(r"^\d+\+?(boy|girl|other)s?$")
 _SUBJECT_TAGS = {"solo", "solo_focus", "male_focus", "female_focus",
                  "multiple_boys", "multiple_girls", "multiple_others",
@@ -59,6 +59,11 @@ def normalize(tag):
     hair:1.2)" as "blonde_hair:1.2" -- a tag no vocabulary has, silently
     dropping from the context the very tag the weight says matters most.
 
+    The weight may be negative: "(particles:-1.2)" is a prompt asking
+    for less of something, and leaving the minus unmatched left the tag
+    as "particles:-1.2" -- out of every vocabulary, so the request was
+    dropped rather than honoured. See weight_of for reading it.
+
     Renaming is deliberately not done here: which of a tag's spellings
     is the live one is a property of the table being asked, so each
     table folds the alias group onto its own vocabulary instead (see
@@ -72,6 +77,27 @@ def normalize(tag):
         if t.startswith("(") and t.endswith(")"):
             t = t[1:-1].strip()
     return re.sub(r"\s+", "_", t.replace("_", " ").strip())
+
+
+def weight_of(tag):
+    """The weight a prompt token carries, 1.0 when it names none.
+
+    Only the outermost weight is read: "((blonde hair:1.2))" is 1.2 to
+    everything here, since bracket emphasis multiplies on the diffusion
+    side and means nothing to a co-occurrence table.
+    """
+    t = tag.strip().lower().replace("\\(", "(").replace("\\)", ")")
+    while True:
+        m = _WEIGHT_RE.search(t)
+        if m:
+            try:
+                return float(m.group(0).lstrip(":").strip())
+            except ValueError:
+                return 1.0
+        if t.startswith("(") and t.endswith(")"):
+            t = t[1:-1].strip()
+            continue
+        return 1.0
 
 
 def split_prompt_tags(prompt):
