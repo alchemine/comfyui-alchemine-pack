@@ -1,15 +1,15 @@
 ﻿[project]
 name = "comfyui-alchemine-pack"
-description = """Prompt filterings, Danbooru, LLM(Inference), API, lazy execution nodes, etc.
+description = """DAAM, Prompt filterings, Danbooru, LLM(Inference), API, lazy execution nodes, etc.
+DAAM: attention heatmap sampler and interactive per-tag explorer
 [a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png): filtering, token analyzing, auto BREAK, prompt processors
 [a/Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png): tag and post retriever
 [a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png): OpenAI-compatible API Inference
 [a/API](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-API.png): remote ComfyUI API execution
 [a/FlowControl](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png): lazy execution
-DAAM: attention heatmap sampler and interactive per-tag explorer
-Python evaluate, Grok, Cached LoRA Tag loader, etc."""
+Python evaluate, Cached LoRA Tag loader, etc."""
 
-version = "3.0.0"
+version = "4.0.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [

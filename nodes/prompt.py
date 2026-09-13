@@ -1,6 +1,5 @@
 """Nodes in AlcheminePack/Prompt."""
 
-import random
 import re
 import numbers
 import textwrap
@@ -18,13 +17,15 @@ from .lib.tag_guard import (
 )
 from .lib.tag_veto import filter_by_veto, veto_available
 from .lib.tag_suggest import (suggest_tags, suggest_available,
-                              DEFAULT_COHESION, DEFAULT_REPEAT_DECAY)
+                              DEFAULT_MOMENTUM,
+                              DEFAULT_REPETITION_PENALTY)
 
 
 logger = get_logger()
 
-# Danbooru rating names, mildest first; the node also offers "random",
-# which draws one of these
+# Danbooru rating names, mildest first; the node also offers "all",
+# which is not one of these but the absence of a request -- see the
+# widget tooltip.
 RATINGS = ("general", "sensitive", "questionable", "explicit")
 
 # TagGenerator's category widgets, in the order they appear on the node:
@@ -80,6 +81,27 @@ CATEGORY_UNCAPPED = -1.0
 # wins: off means off whatever the share says, which also lets a share
 # be dialled in, switched off, and switched back on unchanged.
 _SHARE_SUFFIX = "_share"
+
+
+def _legacy_knobs(categories, momentum, repetition_penalty):
+    """Accept the pre-rename widget names, then drop them.
+
+    TagGenerator collects its category shares as **kwargs, so an API
+    workflow still sending "cohesion" or "repeat_decay" would not raise
+    -- the stale name would be read as a category share and quietly cap
+    a category that does not exist. Popping them here keeps those
+    workflows running and keeps the spec clean either way.
+
+    repeat_decay is the reciprocal: the penalty used to be a factor the
+    odds were multiplied by, and is now the one they are divided by, so
+    the direction matches every other repetition penalty.
+    """
+    if "cohesion" in categories:
+        momentum = float(categories.pop("cohesion"))
+    decay = categories.pop("repeat_decay", None)
+    if decay is not None and float(decay) > 0:
+        repetition_penalty = 1.0 / float(decay)
+    return momentum, repetition_penalty
 
 
 def _categories_spec(counts):
@@ -1265,9 +1287,10 @@ class TagGenerator(BasePrompt):
     rating caps explicitness on both sides: the statistics come from the
     matching corpus slice, and tags whose own rating level exceeds the
     request are masked, so "general" cannot surface a tag Danbooru only
-    applies to racier art. "random" draws one of the four uniformly from
-    seed, so the choice is reproducible and a new seed rerolls the
-    rating along with the tags.
+    applies to racier art. "all" draws one from seed with the mild pair
+    (general/sensitive) sharing a third, questionable a third and
+    explicit a third, so the choice is reproducible and a new seed
+    rerolls the rating along with the tags.
 
     lift_threshold is the veto's only tuned parameter, the same knob
     ConsistencyGuard exposes and the same default: a candidate is banned
@@ -1279,15 +1302,27 @@ class TagGenerator(BasePrompt):
     sit at 0.15, six times rarer than chance but past a 0.1 cut. Vetoed
     candidates are replaced rather than dropped, so n still holds.
 
-    repeat_decay is the brake on cohesion. Because a pick re-conditions
-    the next one, the strongest neighbours of "blue skin" are the other
-    skin colours, and a draw can spend half its budget enumerating one
-    noun -- which the category quotas cannot stop, since those tags all
-    sit in the same category. Each tag already in the prompt ending in
-    the same word multiplies a candidate's odds by repeat_decay, so the
-    second one needs twice the evidence and the third four times.
+    repetition_penalty is the brake on momentum. Because a pick
+    re-conditions the next one, the strongest neighbours of "blue skin"
+    are the other skin colours and the strongest neighbours of "hands
+    on own face" are "hands on own head" and "hands on own cheeks", so
+    a draw can spend half its budget respelling one idea -- which the
+    category quotas cannot stop, since those tags all sit in the same
+    category. Each tag already in the prompt sharing a slot with a
+    candidate divides its odds by repetition_penalty, so the second one
+    needs twice the evidence and the third four times.
 
-    cohesion is how much each generated tag conditions the ones after
+    A slot is the axis a tag varies along, read off its spelling. Most
+    tags offer their last word: "blue skin" and "pale skin" share one.
+    A tag built around a linking word splits in two, since either half
+    can be the axis being respelled -- "hands on own face" is a "hands
+    on" tag and an "on own face" tag, colliding with "hands on own
+    head" through the first and with "blood on face" through the
+    second. It is deliberately literal: "hands on own face" and
+    "covering face" describe the same gesture, but noticing that is the
+    co-occurrence data's job, not the speller's.
+
+    momentum is how much each generated tag conditions the ones after
     it, against the prompt's own pull. At 0 every tag answers to the
     prompt alone and they have nothing to do with each other -- for
     "night, city, rain", mechanical arms beside oversized wings beside a
@@ -1402,8 +1437,8 @@ class TagGenerator(BasePrompt):
                            "merely discourages; 0.1 only catches pairs that "
                            "essentially never co-occur.",
             }),
-            "cohesion": ("FLOAT", {
-                "default": DEFAULT_COHESION, "min": 0.0, "max": 1.0,
+            "momentum": ("FLOAT", {
+                "default": DEFAULT_MOMENTUM, "min": 0.0, "max": 1.0,
                 "step": 0.05,
                 "tooltip": "How much each generated tag conditions the ones "
                            "after it. 0 = every tag answers to the prompt "
@@ -1412,25 +1447,33 @@ class TagGenerator(BasePrompt):
                            "tag, so the output reads as one scene but can "
                            "wander off into its own subject.",
             }),
-            "repeat_decay": ("FLOAT", {
-                "default": DEFAULT_REPEAT_DECAY, "min": 0.05, "max": 1.0,
-                "step": 0.05,
-                "tooltip": "Shrink a tag's odds by this factor for every "
-                           "tag already in the prompt ending in the same "
-                           "word. 0.5 halves them each time, so a second "
-                           "'<colour> skin' needs twice the evidence the "
-                           "first did and a third needs four times; 1.0 "
-                           "turns it off. Counters cohesion, which pulls "
-                           "hardest along the axis it just moved on.",
+            "repetition_penalty": ("FLOAT", {
+                "default": DEFAULT_REPETITION_PENALTY,
+                "min": 1.0, "max": 10.0, "step": 0.1,
+                "tooltip": "Divide a tag's odds by this for every tag "
+                           "already in the prompt that varies along the "
+                           "same axis -- the same last word ('<colour> "
+                           "skin'), or the same half of a linking word "
+                           "('hands on own face' / 'hands on own head'). "
+                           "2.0 halves them each time, so a second needs "
+                           "twice the evidence the first did and a third "
+                           "needs four times; 1.0 turns it off. Counters "
+                           "momentum, which pulls hardest along the axis "
+                           "it just moved on. Exact repeats are blocked "
+                           "outright and are not what this controls.",
             }),
-            "rating": (list(RATINGS) + ["random"], {
-                "default": "explicit",
+            "rating": (list(RATINGS) + ["all"], {
+                "default": "all",
                 "tooltip": "Explicitness ceiling, on both halves of the "
                            "statistic: the co-occurrence tables come from "
                            "the matching corpus slice, and tags rated above "
                            "the request are masked. It is a ceiling, not a "
-                           "target -- 'explicit' permits rather than "
-                           "pushes. 'random' draws one from the seed.",
+                           "target, so a named rating also gets a nudge "
+                           "toward itself -- 'explicit' would otherwise "
+                           "merely permit rather than lean. 'all' caps and "
+                           "favours nothing, leaving the prompt to decide: "
+                           "a nude prompt draws explicit tags, a school "
+                           "uniform one draws none.",
             }),
             "temperature": ("FLOAT", {
                 "default": 1.0, "min": 0.0, "max": 5.0, "step": 0.05,
@@ -1588,7 +1631,7 @@ class TagGenerator(BasePrompt):
         text: str,
         n: int = 10,
         lift_threshold: float = 0.1,
-        rating: str = "explicit",
+        rating: str = "all",
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 0.95,
@@ -1599,17 +1642,18 @@ class TagGenerator(BasePrompt):
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
-        cohesion: float = DEFAULT_COHESION,
-        repeat_decay: float = DEFAULT_REPEAT_DECAY,
+        momentum: float = DEFAULT_MOMENTUM,
+        repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
         **categories: float,
     ) -> tuple[str]:
         """Append companion tags to a prompt."""
-        if rating == "random":
-            # drawn from seed, so a workflow stays reproducible and a new
-            # seed rerolls the rating along with the tags
-            rating = random.Random(seed).choice(RATINGS)
-            logger.debug("[TagGenerator] random rating -> %s", rating)
-        rating = rating[0]  # danbooru letter form: g/s/q/e
+        # "all" reaches the sampler as itself: it is the one value that
+        # caps nothing and favours nothing, so the prompt is left to
+        # decide how explicit the tags are. The rest go down in danbooru
+        # letter form: g/s/q/e.
+        rating = rating if rating == "all" else rating[0]
+        momentum, repetition_penalty = _legacy_knobs(
+            categories, momentum, repetition_penalty)
         spec = _categories_spec(categories)
 
         def process(prompt):
@@ -1641,7 +1685,8 @@ class TagGenerator(BasePrompt):
                 top_k=top_k, top_p=top_p, min_p=min_p, seed=seed,
                 rating=rating, categories=spec, blacklist=blacklist_rx,
                 lift_th=lift_threshold,
-                cohesion=cohesion, repeat_decay=repeat_decay,
+                momentum=momentum,
+                repetition_penalty=repetition_penalty,
             )
 
         # the pipeline is applied to the whole prompt, so the kept tags are
@@ -1659,7 +1704,7 @@ class TagGenerator(BasePrompt):
         text: str,
         n: int = 10,
         lift_threshold: float = 0.1,
-        rating: str = "explicit",
+        rating: str = "all",
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 0.95,
@@ -1670,13 +1715,16 @@ class TagGenerator(BasePrompt):
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
-        cohesion: float = DEFAULT_COHESION,
-        repeat_decay: float = DEFAULT_REPEAT_DECAY,
+        momentum: float = DEFAULT_MOMENTUM,
+        repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
         **categories: float,
     ) -> tuple:
+        momentum, repetition_penalty = _legacy_knobs(
+            categories, momentum, repetition_penalty)
         return (text, n, lift_threshold, rating, temperature, top_k, top_p,
                 min_p, seed, min_count, blacklist, replace_underscores,
-                filter_tags, filter_subtags, cohesion, repeat_decay,
+                filter_tags, filter_subtags, momentum,
+                repetition_penalty,
                 tuple(sorted(categories.items())))
 
 

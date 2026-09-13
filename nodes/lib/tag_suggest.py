@@ -17,7 +17,8 @@ may be limited by category quota and rating level.
 import math
 import re
 
-from . import artifact, tag_alias, tag_avoid, tag_category, tag_subject, tag_veto
+from . import (artifact, tag_alias, tag_avoid, tag_category, tag_solo,
+               tag_subject, tag_veto)
 from .tag_category import RATING_ORDER
 from .tag_veto import normalize, split_prompt_tags, DEFAULT_LIFT_TH
 from .utils import get_logger
@@ -39,19 +40,23 @@ _MIN_EXPECTED = 15.0
 # "computer keyboard" and the prompt stops mattering. The category
 # quotas now cap any single axis, which is what used to make the high
 # end dangerous, so this sits in the middle rather than low.
-DEFAULT_COHESION = 0.5
+DEFAULT_MOMENTUM = 0.5
 
-# How much the odds of a tag shrink for each tag already picked that
-# shares its head noun -- the last word of the tag, a cheap stand-in for
-# "the same slot in the picture". 0.5 halves them each time: the second
-# <colour> skin needs twice the evidence the first one did, the third
-# four times. 1.0 disables it.
+# How much the odds of a tag are divided by for each tag already picked
+# that shares one of its slots (see TagSuggest.slots). 2.0 halves them
+# each time: the second "<colour> skin" needs twice the evidence the
+# first one did, the third four times. 1.0 disables it, and the
+# direction follows the LLM convention -- raise it to push harder.
 #
-# It exists because cohesion pulls hardest along the axis it just moved
-# on: one "blue skin" makes every other skin colour a top neighbour, and
+# It exists because momentum pulls hardest along the axis it just moved
+# on: one "blue skin" makes every other skin colour a top neighbour,
+# one "hands on own face" makes every other "hands on own ..." one, and
 # a draw can spend half its budget enumerating one noun. The category
 # quotas cannot see this -- all of those tags live in the same category.
-DEFAULT_REPEAT_DECAY = 0.5
+#
+# Exact repeats are not its business: a tag already in the context is
+# banned outright, whatever this is set to.
+DEFAULT_REPETITION_PENALTY = 2.0
 
 # auto-length EOS: stop when no candidate is at least this much more
 # likely than chance given the context (combined lift >= 2)
@@ -63,7 +68,53 @@ _FALLBACK_TARGET_LEN = 31            # solo-post median, if len_hist absent
 # their odds multiplied by this, so asking for "explicit" leans explicit
 # instead of merely permitting it. 1.0 disables the tilt.
 _RATING_BIAS = 2.0
-_LOG_RATING_BIAS = math.log(_RATING_BIAS)
+
+# "all" is not a fifth rating but the absence of one: the tables come
+# from the whole corpus and no level is capped or favoured, so what
+# comes out is whatever the prompt calls for -- explicit tags for a
+# nude prompt, none at all for a school uniform one.
+#
+# Per-level multipliers, mildest first, in case that should ever be
+# nudged. Measured on three prompts x 40 seeds, (1, 1, 2, 2) moves the
+# signal-less "1girl, solo" from 11% explicit to 18%, but pushes
+# "1girl, solo, nude, bed" from 83% to 96% and leaves a school-uniform
+# prompt where it was: a constant factor cannot compete with lift,
+# which swings by orders of magnitude, so it bites hardest exactly
+# where it is least wanted. Hence 1.0 across the board.
+_RATING_WEIGHTS = (1.0, 1.0, 1.0, 1.0)
+
+# Words that link the two halves of a tag, or trail a verb as a
+# particle. The list only has to name them; which role a word plays in
+# a given tag falls out of whether anything follows it, so "up" needs
+# no entry of its own in "hand_up" versus "looking_up".
+_PARTICLES = frozenset("""
+    on in at to of by with from into onto under over above below behind
+    between around against across through beside near up down out off
+    back together apart forward aside away
+""".split())
+
+
+def _depluralize(word):
+    """Crude singular, so "hands_on_own_hip" and "hand_on_own_face"
+    land in one slot. Short words are left alone: "ass" and "grass" are
+    not plurals, and nothing is gained by splitting hairs over the few
+    that slip through -- a wrong merge costs one discount, not a ban.
+    """
+    return word[:-1] if len(word) > 3 and word.endswith("s") else word
+
+
+def _slot_keys(tag):
+    """The one or two slots a tag occupies. See TagSuggest.slots."""
+    words = tag.split("_")
+    at = next((i for i, w in enumerate(words)
+               if i > 0 and w in _PARTICLES), None)
+    if at is None:
+        return (("W", _depluralize(words[-1])),)
+    left = ("L", words[at], "_".join(_depluralize(w) for w in words[:at]))
+    if at == len(words) - 1:                  # particle, nothing follows
+        return (left,)
+    return (left, ("R", words[at], "_".join(words[at + 1:])))
+
 
 _SUGGEST_PATH = artifact.resource("suggest_v1.1.npz")
 # not committed (106MB); fetched from the data release on first use.
@@ -126,7 +177,8 @@ class TagSuggest:
         self._labels = None          # lazy (category, rating) arrays
         self._avoid = None           # lazy avoidance table
         self._blacklist = None       # (pattern, mask) of the last regex
-        self._heads = None           # lazy (head noun id per tag, count)
+        self._slots = None           # lazy (slot ids per tag, count)
+        self._solo = None            # lazy (multi-person, male) vetoes
         self._subject = None         # lazy subject-conjunction table
         self._veto_ids = None        # lazy vocab mapped onto TagVeto's
 
@@ -138,24 +190,55 @@ class TagSuggest:
                 else (None, (None, None))
         return self._labels
 
-    def heads(self):
-        """(head noun id per vocab entry, number of distinct head nouns).
+    def slots(self):
+        """(two slot ids per vocab entry, number of distinct slots).
 
-        The head noun is the tag's last word: "blue_skin" and
-        "two-tone_skin" share one, "blue_skin" and "blue_eyes" do not.
-        Crude, but it is the axis the runaway draws actually run along --
-        skin colours, beard shapes, sideburn lengths -- and 20,811 tags
-        spread over 6,510 head nouns, so it groups far less than it
-        leaves alone.
+        A slot is "the same place in the picture", and
+        repetition_penalty discounts a candidate once per tag already
+        picked that shares one. Two spellings feed it:
+
+        A linking word with material on both sides splits the tag in
+        two -- "hands_on_own_face" is both a hands tag and an own_face
+        tag, so it collides with "hands_on_own_head" on the left and
+        with "blood_on_face" on the right. Both are real runaways: one
+        pair of hands in three places, three things on one face.
+
+        With nothing to its right the word is a particle rather than a
+        preposition ("looking_up", "tongue_out") and only the left side
+        is a slot. That falls out of the position, so the word list
+        never has to say which role a word is playing.
+
+        Everything else keeps the old rule, the last word: "blue_skin"
+        and "two-tone_skin" share a slot, "blue_skin" and "blue_eyes"
+        do not.
+
+        The three kinds are kept in separate namespaces, so the slot a
+        prepositional tag takes from its right side never meets a plain
+        tag's last word. "hands_on_own_face" and "covering_face" are
+        related, but relating them is the co-occurrence data's job --
+        this is only meant to catch the lexical families, where the
+        same words are being re-spelled around one axis.
         """
-        if self._heads is None:
+        if self._slots is None:
             np = self._np
-            index, ids = {}, np.empty(len(self.vocab), dtype=np.int32)
+            index = {}
+            ids = np.zeros((len(self.vocab), 2), dtype=np.int32)
+            index[None] = 0                           # the empty slot
             for i, tag in enumerate(self.vocab):
-                head = tag.rsplit("_", 1)[-1]
-                ids[i] = index.setdefault(head, len(index))
-            self._heads = (ids, len(index))
-        return self._heads
+                for k, key in enumerate(_slot_keys(tag)):
+                    ids[i, k] = index.setdefault(key, len(index))
+            self._slots = (ids, len(index))
+        return self._slots
+
+    def solo_masks(self):
+        """(multi-person veto, male-anatomy veto) over the vocabulary.
+
+        Neither depends on the prompt, only on which tags exist, so they
+        are built once and indexed per draw (see tag_solo).
+        """
+        if self._solo is None:
+            self._solo = tag_solo.masks(self.vocab)
+        return self._solo
 
     def _tier(self, rating):
         return self._tiers.get(rating, self._tiers["e"])
@@ -268,7 +351,7 @@ class TagSuggest:
         the user's regex rejects it.
         """
         eligible = counts >= min_count
-        if level_of is not None:
+        if level_of is not None and rating != "all":
             eligible &= level_of <= RATING_ORDER.index(rating)
         if allowed is not None and cat_of is not None:
             eligible &= self._np.isin(cat_of, list(allowed))
@@ -277,15 +360,29 @@ class TagSuggest:
             eligible &= ~rejected
         return eligible
 
+    def _rating_log_weights(self, rating):
+        """Per-level log multiplier on the prior, or None for a flat one.
+
+        A named rating tilts toward itself by _RATING_BIAS; "all" spends
+        _RATING_WEIGHTS, which is flat unless someone edits it.
+        """
+        np = self._np
+        if rating == "all":
+            w = np.log(np.asarray(_RATING_WEIGHTS, dtype=np.float64))
+        else:
+            w = np.zeros(len(RATING_ORDER))
+            w[RATING_ORDER.index(rating)] = math.log(_RATING_BIAS)
+        return w if w.any() else None
+
     def _log_prior(self, counts, level_of, rating):
         """log P(t), tilted toward the requested rating tier."""
         np = self._np
         # a few composition tags have ~0 solo-corpus count; floor at 1
         prior = np.log(np.maximum(counts.astype(np.float64), 1.0)
                        / counts.sum())
-        if level_of is not None and _LOG_RATING_BIAS:
-            prior = prior + _LOG_RATING_BIAS * (
-                level_of == RATING_ORDER.index(rating))
+        w = self._rating_log_weights(rating)
+        if level_of is not None and w is not None:
+            prior = prior + w[np.clip(level_of, 0, len(w) - 1)]
         return prior
 
     def suggest(self, inputs, m=10, min_count=DEFAULT_MIN_COUNT,
@@ -293,8 +390,8 @@ class TagSuggest:
                 top_k=0, top_p=1.0, min_p=0.0, seed=0, rating="e",
                 categories="", blacklist="", quota_total=None,
                 avoid_alpha=tag_avoid.DEFAULT_ALPHA,
-                cohesion=DEFAULT_COHESION,
-                repeat_decay=DEFAULT_REPEAT_DECAY):
+                momentum=DEFAULT_MOMENTUM,
+                repetition_penalty=DEFAULT_REPETITION_PENALTY):
         """Return up to m tags (Danbooru form) that go with the inputs.
 
         One tag per step, LM-style. The step distribution is naive Bayes:
@@ -318,7 +415,8 @@ class TagSuggest:
         the rating level of the tags themselves. Since the cap admits
         every milder tier too, tags at exactly the requested level are
         multiplied by _RATING_BIAS, so the request reads as a leaning
-        rather than only a ceiling.
+        rather than only a ceiling. "all" is the absence of a request:
+        the whole corpus, no cap, no tilt.
 
         quota_total overrides m as the base the category shares are
         fractions of, for a caller that asks for more than it keeps.
@@ -379,6 +477,18 @@ class TagSuggest:
         if joint is not None:
             banned |= joint.mask(subject_ids)
 
+        # ...and what one person cannot do at all, which is a rule
+        # rather than a measurement: the corpus is not surprised by
+        # "solo" beside "rape" or "hug", so no table here can object to
+        # it (see tag_solo). Read off the prompt alone -- every tag that
+        # could change the count is on the list it applies.
+        alone, female = tag_solo.context(tags)
+        if alone:
+            multi_veto, male_veto = self.solo_masks()
+            banned |= multi_veto
+            if female:
+                banned |= male_veto
+
         # The veto verdict for a candidate only depends on the reference
         # tags, and refs only ever grows by the tag just picked, so a
         # candidate cleared against refs[:k] never has to be re-judged
@@ -387,17 +497,20 @@ class TagSuggest:
         refs_judged = 0
         veto_ids = self._veto_vocab_ids(veto) if veto else None
 
-        # Repetition penalty, in log space: shrinking the odds by
-        # repeat_decay per repeat is subtracting -log(repeat_decay) per
+        # Repetition penalty, in log space: dividing the odds by
+        # repetition_penalty per repeat is subtracting its log per
         # repeat, so the geometric decay and the log-linear penalty are
-        # the same statement. The prompt's own tags seed the counts --
+        # the same statement. A tag sits in up to two slots, and hits
+        # add across both. The prompt's own tags seed the counts --
         # asking to extend "pale skin" should already discount the next
         # skin tag, not wait for the sampler to pick one itself.
-        head_of, n_heads = self.heads()
-        log_decay = -math.log(repeat_decay) if 0 < repeat_decay < 1 else 0.0
-        head_used = np.zeros(n_heads, dtype=np.int32)
-        if log_decay:
-            np.add.at(head_used, head_of[ids], 1)
+        slot_of, n_slots = self.slots()
+        log_penalty = (math.log(repetition_penalty)
+                       if repetition_penalty > 1 else 0.0)
+        slot_used = np.zeros(n_slots, dtype=np.int32)
+        if log_penalty:
+            np.add.at(slot_used, slot_of[ids].ravel(), 1)
+            slot_used[0] = 0                      # the empty slot never hits
 
         for _ in range(m):
             if veto:
@@ -424,22 +537,25 @@ class TagSuggest:
             # sampling filters run over them alone rather than over a
             # 20k vector that is masked off almost everywhere
             logits = (log_prior[cand] + log_lift[cand] + log_repel[cand])
-            if log_decay:
-                logits = logits - log_decay * head_used[head_of[cand]]
+            if log_penalty:
+                hits = slot_used[slot_of[cand]].sum(axis=1)
+                logits = logits - log_penalty * hits
             j = int(cand[self._pick(logits, rng, temperature,
                                     top_k, top_p, min_p)])
             tag = self.vocab[j]
             chosen.append(tag)
             refs.append(tag)                          # picks must cohere
             banned[j] = True                          # and cannot repeat
-            head_used[head_of[j]] += 1
+            if log_penalty:
+                np.add.at(slot_used, slot_of[j], 1)
+                slot_used[0] = 0
             if quota and cat_of is not None:
                 budget = quota.get(int(cat_of[j]))
                 if budget is not None:
                     used[budget[0]] = used.get(budget[0], 0) + 1
             gain, loss = self._log_lift_sum([j], tier)   # re-condition
-            log_lift += cohesion * gain
-            log_repel += cohesion * loss
+            log_lift += momentum * gain
+            log_repel += momentum * loss
             banned |= self._repel_veto([j], tier, lift_th, avoid_alpha)
             if joint is not None and j in joint.subject_ids:
                 subject_ids.append(j)
@@ -500,8 +616,8 @@ def suggest_tags(prompt, n=10, min_count=DEFAULT_MIN_COUNT,
                  rating="e", categories="", blacklist="",
                  lift_th=DEFAULT_LIFT_TH, quota_total=None,
                  avoid_alpha=tag_avoid.DEFAULT_ALPHA,
-                 cohesion=DEFAULT_COHESION,
-                 repeat_decay=DEFAULT_REPEAT_DECAY):
+                 momentum=DEFAULT_MOMENTUM,
+                 repetition_penalty=DEFAULT_REPETITION_PENALTY):
     """Comma-separated prompt in, list of suggested tags (space form) out."""
     engine = load_suggest()
     inputs = split_prompt_tags(prompt)
@@ -511,8 +627,8 @@ def suggest_tags(prompt, n=10, min_count=DEFAULT_MIN_COUNT,
                           top_p=top_p, min_p=min_p, seed=seed, rating=rating,
                           categories=categories, blacklist=blacklist,
                           quota_total=quota_total,
-                          avoid_alpha=avoid_alpha, cohesion=cohesion,
-                          repeat_decay=repeat_decay)
+                          avoid_alpha=avoid_alpha, momentum=momentum,
+                          repetition_penalty=repetition_penalty)
     # keep emoticon tags (^_^, o_o) intact: only wordlike tags get spaces
     return [t.replace("_", " ") if re.search(r"[a-z]", t) else t
             for t in tags]

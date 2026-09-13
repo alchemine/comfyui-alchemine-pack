@@ -1,0 +1,348 @@
+# Tags a one-person prompt cannot contain.
+#
+# Read by nodes/lib/tag_solo.py. One tag per line, danbooru form with
+# spaces, exact match -- substrings would take "grapes" for "rape" and
+# "gothic lolita" for "loli". Lines starting with # are comments.
+#
+# [multi_person] needs a second character in the picture, so it is
+# vetoed whenever the prompt's subject tags add up to one. Tags spelled
+# with "another" are not listed: the word itself is the evidence, and
+# tag_solo bans all 140 of them by that rule alone.
+#
+# [male_anatomy] is a different axis -- not how many people, but whose
+# body. It is vetoed only when the one person is a girl and nothing in
+# the prompt says otherwise (futanari, newhalf, otoko no ko, a boy
+# count tag). "1girl, solo" with an erection reads as a contradiction
+# to the diffusion model, which is the whole reason this file exists.
+#
+# Edit freely: a line removed here is a tag the generator may suggest
+# again. The statistical tables are not involved either way.
+
+[multi_person]
+1boy
+1other
+2boys
+2girls
+2others
+3boys
+3girls
+3others
+4boys
+4girls
+4others
+5boys
+5girls
+5others
+6+boys
+6+girls
+6+others
+accidental kiss
+adoptive siblings
+after handjob
+after kiss
+after rape
+age difference
+anal
+arm hug
+assertive female
+assisted rape
+autofellatio
+boy on top
+breast sucking
+carrying person
+cervical penetration
+cervix
+clothed female nude male
+clothed male nude female
+clothed sex
+cooperative handjob
+couple
+cowgirl position
+cross-section
+cuddling handjob
+cunnilingus
+deep penetration
+deepthroat
+doggystyle
+double arm hug
+double cheek kiss
+double handjob
+double penetration
+eye contact
+fellatio
+femdom
+fertilization
+fff threesome
+ffm threesome
+footjob
+forced exposure
+forced hug
+forced kiss
+forced partners
+forced to watch
+french kiss
+frottage
+futa with female
+futa with male
+gangbang
+girl on top
+gloved handjob
+grabbing from behind
+groping
+group hug
+group sex
+half-siblings
+handjob
+handjob over clothes
+happy sex
+harem
+head hug
+headpat
+heads together
+hetero
+holding hands
+hug
+hug and suck
+hug from behind
+hug from side
+imminent fellatio
+imminent hug
+imminent kiss
+imminent penetration
+imminent rape
+imminent vaginal
+implied handjob
+implied kiss
+implied rape
+implied sex
+impregnation
+incest
+incoming headpat
+incoming hug
+incoming kiss
+incoming pocky kiss
+interlocked fingers
+internal cumshot
+interracial
+interspecies
+irrumatio
+kiss
+kissing back
+kissing breast
+kissing cheek
+kissing ear
+kissing eye
+kissing foot
+kissing forehead
+kissing hair
+kissing hand
+kissing head
+kissing leg
+kissing neck
+kissing nose
+kissing penis
+kissing shoulder
+kissing stomach
+kissing thigh
+kodomo doushi
+lap pillow
+leaning on person
+lifting person
+lying on person
+male harem
+male penetrated
+male spitroast
+mating press
+milking handjob
+missionary
+mixed harem
+mmf threesome
+mmm threesome
+molestation
+multiple boys
+multiple girls
+multiple others
+mutual hug
+nursing handjob
+on person
+onee-loli
+onee-shota
+onii-shota
+oral
+orgy
+ovaries
+ovum
+paizuri
+pec pov (meme)
+peeing together
+piggyback
+piledriver (sex)
+pocky kiss
+pov adoring
+pov breasts
+pov bullying
+pov cheek grabbing (meme)
+pov cheek warming (meme)
+pov crotch
+pov dating
+pov hands
+pov legs
+princess carry
+prone bone
+rape
+rejected kiss
+reverse cowgirl position
+reverse grip handjob
+reverse nursing handjob
+reverse spitroast
+reverse suspended congress
+reverse upright straddle
+sex
+sex from behind
+sex machine
+shared bathing
+shoulder carry
+siblings
+single arm hug
+sitting on face
+sitting on lap
+sitting on person
+sitting on shoulder
+size difference
+sleep molestation
+sleeping on person
+sleeping together
+sperm cell
+spitroast
+squatting cowgirl position
+standing missionary
+standing on person
+standing sex
+stealth handjob
+step-siblings
+straddling
+straddling paizuri
+surprise hug
+surprise kiss
+surrounded by hands
+surrounded by penises
+suspended congress
+thigh straddling
+three-finger handjob
+threesome
+tiptoe kiss
+torso grab
+tribadism
+triple penetration
+two-finger handjob
+two-handed handjob
+upright straddle
+upside-down kiss
+uterus
+vaginal
+waist hug
+x-ray
+yaoi
+you gonna get raped
+yuri
+
+[male_anatomy]
+animal penis
+biting penis
+blue penis
+bouncing penis
+bouncing testicles
+caressing testicles
+colored penis
+condom on penis
+covered penis
+covered testicles
+cum on penis
+cum on testicles
+dark penis
+disembodied penis
+dog penis
+erection
+erection in panties
+erection under clothes
+erection under towel
+food on penis
+foreskin
+foreskin insertion
+foreskin pull
+gigantic penis
+girthy penis
+hand on own penis
+hands on penis
+horse penis
+huge penis
+huge testicles
+invisible penis
+kissing penis
+knotted penis
+large penis
+large testicles
+licking penis
+licking testicle
+lipstick mark on penis
+lipstick mark on testicles
+looking at penis
+male pubic hair
+no male underwear
+no nut november
+no penis
+no testicles
+panties on penis
+penis
+penis and testicles touching
+penis awe
+penis chart
+penis face
+penis focus
+penis grab
+penis hug
+penis in glove
+penis in panties
+penis measuring
+penis milking
+penis on ass
+penis on face
+penis on head
+penis on pussy
+penis on stomach
+penis out
+penis out of frame
+penis over eyes
+penis over one eye
+penis peek
+penis piercing
+penis ribbon
+penis shadow
+penis sheath
+penis size difference
+penis tentacle
+penis to breast
+penis under another's clothes
+penis under mask
+penises touching
+phimosis
+poking with penis
+precum
+precum drip
+precum string
+precum through clothes
+sagging testicles
+saliva on penis
+small penis
+small testicles
+smelling penis
+sock on penis
+spiked penis
+squeezing testicles
+testicles
+tucked penis
+twitching penis
+used condom on penis
+veiny penis
+veiny testicles
+vibrator on penis
