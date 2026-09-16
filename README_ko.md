@@ -29,11 +29,11 @@
 | **SDXLAutoBreak** | 각 세그먼트가 75토큰 이내가 되도록 자동으로 BREAK를 삽입합니다 (SDXL 전용). |
 | **SubstituteTags** | 정규식 기반 태그 치환. 조건부 실행(`run_if`, `skip_if`) 지원. |
 | **SeparateLoraTags** | 프롬프트에서 lora 태그(`<lora:...>`)를 분리합니다. 동일한 lora가 여러 번 등장하면 마지막 가중치를 사용합니다. |
-| **TagGenerator** | Danbooru 동시출현 통계에서 어울리는 태그를 샘플링해 프롬프트를 확장합니다. 6개 카테고리(characters, pose, expressions, body, clothes, background)마다 토글과 `_share` 상한(`0.3` = 최대 30%, `-1` = 무제한)이 있어 한 축이 출력을 독점하지 않습니다. `characters`는 주어 자체(`1girl`, `solo` 등)를 담당하며 뒤따르는 태그의 성별을 고정합니다. `momentum`은 이전 선택이 다음 선택에 미치는 영향(1.0 = 하나의 장면, 0 = 서로 무관)이고, `repetition_penalty`는 그 제동입니다. 같은 축을 따라 변주된 태그가 프롬프트에 이미 있으면 후보의 확률을 그만큼 나눕니다. 축은 마지막 단어(`pale skin` / `blue skin`)가 같거나, 연결어를 낀 한쪽이 같은 경우(`hands on own face` / `hands on own head`)입니다. `2.0`이면 두 번째 태그가 두 배의 근거를 요구하고 `1.0`은 끕니다. `rating`은 수위 상한입니다. 등급을 지정하면 그 등급 쪽으로 가중치도 함께 붙습니다 — 상한만으로는 더 순한 등급이 개수로 이겨버리기 때문입니다. 기본값 `all`은 상한도 가중치도 두지 않아 프롬프트가 수위를 결정합니다(nude 프롬프트면 explicit 태그가, 교복 프롬프트면 거의 나오지 않습니다). `random`은 네 등급 중 하나를 시드에서 균등하게 뽑아 매번 상한이 걸리되 시드마다 상한이 바뀝니다. 입력이 비어 있으면 아무것도 하지 않던 동작이 바뀌었습니다. 앵커 하나 — 코퍼스가 할 말이 많은 장소나 사물(`beach`, `chopsticks`, `moon`; 아무것도 함의하지 않는 `1girl`이 아니라) — 를 뽑아 거기서 장면을 키웁니다. `characters`가 켜져 있으면 주어도 함께 뽑아 둘 다 출력에 포함합니다. 여성 인원 태그가 없는 프롬프트는 — 비어 있든 아니든 — 하나를 뽑아 문맥에만 넣습니다. 그러지 않으면 `beach, dynamic pose` 같은 입력이 아무것과도 비교되지 않아 bara, male swimwear 같은 결과를 내기 때문입니다. 전제일 뿐이라 출력에는 나가지 않고 solo 가드도 건드리지 않습니다. 가중치가 0 이하인 태그는 문맥이 아니라 반대 방향으로 작용합니다 — `(light particles:-1.2)`는 그 태그와 함께 다니는 태그들까지 크기에 비례해 밀어냅니다. 양수 가중치는 확산 모델 몫이고, 여기서는 부호만 읽습니다. 1인 프롬프트(`solo`이거나 인원 태그 합이 1)에는 solo 가드가 추가로 걸립니다. 두 번째 인물이 필요한 태그 — `another`가 들어간 모든 태그와, 철자로는 드러나지 않는 목록(`hug`, `headpat`, `kiss`, `rape`) — 을 무조건 차단합니다. 코퍼스는 이 조합을 이상하게 여기지 않아서 통계 테이블로는 막을 수 없기 때문입니다. 그 1인이 여성이고 달리 명시된 것이 없으면(`futanari`, 남성 인원 태그) 남성 신체 태그도 함께 차단됩니다. 목록은 `resources/solo_conflict.txt`에 있고 직접 편집하도록 만들었습니다. 출력은 ProcessTags 파이프라인을 거치고 `n`은 살아남은 태그 수입니다. |
-| **ConsistencyGuard** | 수작업 충돌 목록 대신 동시출현 lift 기준으로, 고정 태그와 모순되는 생성 태그를 제거합니다. |
-| **ClassifyTags** | 프롬프트를 대분류(characters, clothes, body, expression, pose, background, objects, nsfw, others)로 나눠 출력합니다. |
-| **GroupTags** | 태그를 주제별 그룹으로 묶어 한 줄에 한 그룹씩 배치합니다. 마지막(또는 첫) 단어가 같은 태그끼리 모이고, 인물/관계 태그(`1girl`, `hetero` 등)는 맨 앞 줄로 끌어올립니다. |
 | **TextPrompt** | `dynamicPrompts`를 끈 순수 멀티라인 텍스트 입력. `{a|b}`를 입력해도 커서가 끝으로 튀지 않으며, 와일드카드는 실행 시점에 Python에서 확장됩니다. |
+
+> ℹ️ **태그 생성 노드는 이 팩에서 분리되었습니다.** 이제
+> [comfyui-generator-pack](https://github.com/alchemine/comfyui-generator-pack)의
+> `Tags Generator`, `Tags Conflict Filter`, `Classify Tags`, `Group Tags`로 제공됩니다.
 
 #### ProcessTags
 
@@ -180,31 +180,9 @@ denoise → edge enhance → CAS → local contrast → resize. 디노이즈가 
 
 ---
 
-### DAAM 노드 (`AlcheminePack/DAAM`)
-
-크로스 어텐션 히트맵([DAAM](https://arxiv.org/abs/2210.04885))으로 프롬프트의 어떤 태그가 이미지의 어느 부분을 만들었는지 시각화합니다.
-
-| 노드 | 설명 |
-|------|------|
-| **Sampler Custom (DAAM)** | `SamplerCustom`과 동일한 입력에 크로스 어텐션 히트맵 출력(`pos_heatmaps` / `neg_heatmaps`)이 추가된 노드. 히트맵 출력을 연결하지 않으면 어텐션 패치를 아예 건너뛰므로 기본 샘플러와 비용이 같습니다. |
-| **DAAM Tag Explorer** | 태그 단위 인터랙티브 어텐션 뷰어. 프롬프트를 콤마 기준 태그로 분리(BREAK 청크, `embedding:이름` 처리)해 히트맵과 대응시킵니다. |
-
-#### Sampler Custom (DAAM)
-
-- **입력**: `SamplerCustom`과 동일 (`model`, `add_noise`, `noise_seed`, `cfg`, `positive`, `negative`, `sampler`, `sigmas`, `latent_image`)
-- **출력**: `output`, `denoised_output`, `pos_heatmaps`, `neg_heatmaps`
-- 히트맵은 GPU에서 누적되며 이미지/16 격자(SDXL의 가장 정밀한 크로스 어텐션 해상도)에 저장되고, 전체 레이어·스텝에 걸쳐 평균됩니다.
-
-#### DAAM Tag Explorer
-
-- **입력**: `clip`, `text`(인코딩에 쓰인 것과 동일한 프롬프트 문자열, BREAK 포함), `heatmaps`(Sampler Custom (DAAM)의 출력), `images`(디코딩된 이미지)
-- **인터랙션**:
-  - 이미지 호버: 커서 위치에서 각 태그의 어텐션 점유율이 바 그래프로 실시간 표시 (N개 태그 균등 분포 대비 파랑 > 2/N, 노랑 > 1/N)
-  - 이미지 클릭: 그 지점을 지배하는 태그 선택
-  - 패널의 태그 클릭: 해당 히트맵을 이미지에 오버레이 (다중 선택 시 평균, jet 컬러맵 + 컬러바)
-  - `strength` / `smooth` 슬라이더, 어텐션 셀 격자와 호버 셀 하이라이트
-- 히트맵은 이미지당 작은 `.npy` 하나로 브라우저에 전달되어 모든 인터랙션이 클라이언트에서 동작합니다.
-- `text` 입력은 반드시 컨디셔닝을 만든 것과 동일한 문자열이어야 합니다(같은 업스트림 노드에서 분기). 다르면 태그 인덱스가 어긋납니다.
+> ℹ️ **DAAM 노드는 이 팩에서 분리되었습니다.** `Sampler Custom (DAAM)`과 `DAAM Tag Explorer`는 이제
+> [comfyui-daam-pack](https://github.com/alchemine/comfyui-daam-pack)에 있습니다. 노드 id는 그대로라
+> 해당 팩을 설치하면 기존 워크플로가 그대로 열립니다.
 
 ### Everywhere 노드 (`AlcheminePack/Everywhere`)
 
@@ -313,32 +291,9 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 
 ---
 
-### Evaluate 노드 (`AlcheminePack/Evaluate`)
-
-| 노드 | 설명 |
-|------|------|
-| **Evaluate** | 사용자 정의 Python 코드를 입력 문자열에 적용해 변환된 결과를 반환합니다. 워크플로우 내 즉석 태그 가공에 유용합니다. |
-
-#### Evaluate
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `tag` | STRING | (필수) | `main(tag)`에 전달될 입력 문자열 |
-| `code` | STRING (multiline) | 태그 정렬 스니펫 | `def main(tag: str) -> str`을 정의해야 하는 Python 코드 |
-
-| 출력 | 설명 |
-|------|------|
-| `tag` | `main(tag)`의 반환값 |
-
-기본 코드는 쉼표로 구분된 태그를 알파벳순으로 정렬합니다:
-
-```python
-def main(tag: str) -> str:
-    tags = [t.strip() for t in tag.split(",") if t.strip()]
-    return ", ".join(sorted(tags))
-```
-
-> ⚠️ **보안 주의:** `Evaluate`는 `exec()`로 임의의 Python 코드를 실행합니다. 신뢰할 수 있는 코드만 사용하세요.
+> ℹ️ **Evaluate 노드는 이 팩에서 분리되었습니다.** 이제
+> [comfyui-evaluate-pack](https://github.com/alchemine/comfyui-evaluate-pack)에 있습니다. 노드 id는
+> 그대로라 해당 팩을 설치하면 기존 워크플로가 그대로 열립니다.
 
 ---
 

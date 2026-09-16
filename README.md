@@ -29,11 +29,11 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **SDXLAutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens (SDXL only). |
 | **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
 | **SeparateLoraTags** | Separates lora tags (`<lora:...>`) from a prompt. If the same lora appears multiple times, the last weight is used. |
-| **TagGenerator** | Extends a prompt with tags that go with it, sampled from Danbooru co-occurrence. Six categories (characters, pose, expressions, body, clothes, background) each get a toggle and a `_share` cap -- `0.3` at most 30% of the tags, `-1` uncapped -- balanced by default (body 0.3, pose 0.2, clothes 0.2, characters 0.1, expressions 0.1, background 0.1) so one axis cannot take over the output; background also carries objects and compositions. `characters` owns the subject itself (`1girl`, `solo`, `2girls`), so it is what anchors the gender of everything drawn after it. `momentum` is how much a pick conditions the next (1.0 = one scene that can run away with itself, 0 = tags with nothing to do with each other), and `repetition_penalty` is its brake: each tag already in the prompt that varies along the same axis -- the same last word (`pale skin` / `blue skin`) or the same half of a linking word (`hands on own face` / `hands on own head`) -- divides a candidate's odds by it, so `2.0` makes the second one need twice the evidence and `1.0` turns it off; `rating` caps explicitness, and a named one also leans toward itself, since a cap alone would let the milder tiers win on sheer count. `all` (the default) caps and favours nothing -- the prompt decides, so a nude prompt draws explicit tags and a school uniform one draws none; `random` draws one of the four from the seed instead, each equally likely, so every draw is capped but the cap rerolls with the seed. An empty prompt is no longer a no-op: the sampler draws one anchor -- a place or a thing whose neighbours the corpus has plenty to say about, `beach` or `chopsticks` or `moon` rather than `1girl`, which implies nothing -- and grows a scene from it. With `characters` on it draws a subject too and both are part of the output. Any prompt that names no girl count -- empty or not -- also gets one drawn into the context alone, since "beach, dynamic pose" otherwise scores against nothing and comes back with bara and male swimwear; it is a premise, not an answer, so it never reaches the output and never triggers the solo guard. A weight at or below zero reverses a prompt tag instead of asserting it: `(light particles:-1.2)` costs light particles and the tags that travel with them, scaled by the magnitude. Positive weights are for the diffusion side; only the sign is read here. A one-person prompt (`solo`, or subject tags adding up to one) also gets the solo guard: tags that need a second character -- anything spelled with `another`, plus a list the spelling cannot carry (`hug`, `headpat`, `kiss`, `rape`) -- are vetoed outright, since the corpus is not surprised by them next to `solo` and no statistical table can object. If that person is a girl and nothing says otherwise (`futanari`, a boy count tag), male anatomy goes too. The lists live in `resources/solo_conflict.txt` and are meant to be edited. Output runs through the ProcessTags pipeline, and `n` counts the tags that survive it. |
-| **ConsistencyGuard** | Drops generated tags that contradict the fixed ones, judged by co-occurrence lift rather than a hand-written conflict list. |
-| **ClassifyTags** | Splits a prompt into coarse buckets (characters, clothes, body, expression, pose, background, objects, nsfw, others). |
-| **GroupTags** | Lays tags out in themed groups, one group per line. Tags sharing a last (or first) word gather together; person/relationship tags (`1girl`, `hetero`, ...) are hoisted to a leading line of their own. |
 | **TextPrompt** | Plain multiline text input with `dynamicPrompts` off, so typing `{a|b}` no longer jumps the cursor to the end. Wildcards are expanded in Python instead. |
+
+> ℹ️ **The tag generation nodes moved out of this pack.** They now live in
+> [comfyui-generator-pack](https://github.com/alchemine/comfyui-generator-pack) as `Tags Generator`,
+> `Tags Conflict Filter`, `Classify Tags` and `Group Tags`.
 
 #### ProcessTags
 
@@ -179,31 +179,9 @@ sharpening so the sharpeners do not amplify the noise they were meant to remove.
 
 ---
 
-### DAAM Nodes (`AlcheminePack/DAAM`)
-
-Visualize which prompt tag shaped which part of the image, via cross-attention heatmaps ([DAAM](https://arxiv.org/abs/2210.04885)).
-
-| Node | Description |
-|------|-------------|
-| **Sampler Custom (DAAM)** | Drop-in replacement for `SamplerCustom` that also captures cross-attention heatmaps (`pos_heatmaps` / `neg_heatmaps`). With no heatmap output connected the attention patch is skipped entirely, so it costs exactly what the stock sampler costs. |
-| **DAAM Tag Explorer** | Interactive per-tag attention viewer. Splits the prompt into comma-separated tags (BREAK chunks and `embedding:name` handled) and renders them against the heatmaps. |
-
-#### Sampler Custom (DAAM)
-
-- **Input**: same as `SamplerCustom` (`model`, `add_noise`, `noise_seed`, `cfg`, `positive`, `negative`, `sampler`, `sigmas`, `latent_image`)
-- **Output**: `output`, `denoised_output`, `pos_heatmaps`, `neg_heatmaps`
-- Heatmaps are accumulated on the GPU and stored on the image/16 grid — exactly the finest cross-attention resolution of SDXL — then averaged over all layers and steps.
-
-#### DAAM Tag Explorer
-
-- **Input**: `clip`, `text` (the same prompt string that was encoded, BREAK included), `heatmaps` (from Sampler Custom (DAAM)), `images` (decoded)
-- **Interaction**:
-  - Hover the image: a live bar chart shows each tag's share of the attention under the cursor (blue > 2/N, yellow > 1/N of an even split over N tags)
-  - Click the image: selects the tag dominating that spot
-  - Click tags in the panel: overlays their heatmap on the image (multi-select averages; jet colormap with a colorbar)
-  - `strength` / `smooth` sliders, attention-cell grid with hover highlight
-- The maps travel to the browser as one small `.npy` per image, so all interaction runs client-side.
-- The `text` input must be the exact string the conditioning was encoded from (feed both from the same upstream node), or the tag indices will not line up.
+> ℹ️ **The DAAM nodes moved out of this pack.** `Sampler Custom (DAAM)` and `DAAM Tag Explorer` now live in
+> [comfyui-daam-pack](https://github.com/alchemine/comfyui-daam-pack). Node ids are unchanged, so existing
+> workflows keep loading once that pack is installed.
 
 ### Everywhere Nodes (`AlcheminePack/Everywhere`)
 
@@ -312,32 +290,9 @@ A single node for every OpenAI-compatible backend — OpenAI, vLLM, Ollama's `/v
 
 ---
 
-### Evaluate Nodes (`AlcheminePack/Evaluate`)
-
-| Node | Description |
-|------|-------------|
-| **Evaluate** | Runs user-defined Python code against an input string and returns the transformed result. Useful for ad-hoc tag manipulation inside a workflow. |
-
-#### Evaluate
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `tag` | STRING | (required) | Input string passed to `main(tag)` |
-| `code` | STRING (multiline) | sort-tags snippet | Python source that must define `def main(tag: str) -> str` |
-
-| Output | Description |
-|--------|-------------|
-| `tag` | The string returned by `main(tag)` |
-
-The default code sorts comma-separated tags alphabetically:
-
-```python
-def main(tag: str) -> str:
-    tags = [t.strip() for t in tag.split(",") if t.strip()]
-    return ", ".join(sorted(tags))
-```
-
-> ⚠️ **Security note:** `Evaluate` executes arbitrary Python via `exec()`. Only use it with code you trust.
+> ℹ️ **The Evaluate node moved out of this pack.** It now lives in
+> [comfyui-evaluate-pack](https://github.com/alchemine/comfyui-evaluate-pack). The node id is unchanged,
+> so existing workflows keep loading once that pack is installed.
 
 ---
 

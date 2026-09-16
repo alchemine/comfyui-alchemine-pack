@@ -1,13 +1,12 @@
 ﻿[project]
 name = "comfyui-alchemine-pack"
-description = """DAAM, Prompt filtering, Danbooru, Inference, API, lazy execution, etc.
-DAAM: attention heatmap sampler and per-tag explorer
+description = """Prompt filtering, Danbooru, Inference, API, lazy execution, etc.
 [a/Prompt](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Prompt.png): filtering, token analyzing, auto BREAK, prompt processors
 [a/Danbooru](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Danbooru.png): tag and post retriever
 [a/Inference](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-Inference.png): OpenAI-compatible API Inference
 [a/API](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-API.png): remote ComfyUI API execution
 [a/FlowControl](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png): lazy execution
-Python evaluate, Cached LoRA Tag loader, etc."""
+Cached LoRA Tag loader, etc."""
 
 version = "4.1.0"
 license = { file = "LICENSE" }
