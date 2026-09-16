@@ -553,7 +553,7 @@ class ReplaceUnderscores(BasePrompt):
 
     Examples:
         Input: dog_cat_white_dog_black_cat
-        Output: dogcatwhitedogblackcat
+        Output: dog cat white dog black cat
     """
 
     INPUT_TYPES = lambda: {

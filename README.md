@@ -1,6 +1,6 @@
 # ComfyUI-Alchemine-Pack
 
-A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, Danbooru integration, LLM inference, LoRA-tag loading, Grok image-to-video, remote ComfyUI API execution, and workflow control.
+A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, Danbooru integration, LLM inference, LoRA-tag loading, Grok image-to-video, remote ComfyUI API execution, workflow control, image adjustment, and input broadcasting.
 
 ## Installation
 
@@ -134,6 +134,12 @@ keystroke. This node turns the flag off, so the widget behaves like a plain
 text box, and resolves the `{option1|option2|...}` syntax in Python at
 execution time instead (one random pick per group, nesting supported).
 
+When [ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack) is
+installed, its wildcard engine is used instead, so `__wildcard__` file
+references, `$$` multi-select and `#` comments are also resolved — a TextPrompt
+can stand in for an ImpactWildcardProcessor node. Without it, only the `{a|b}`
+syntax is resolved.
+
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `text` | STRING | (required) | Multiline prompt text; `{a|b}` groups are expanded on execution |
@@ -191,7 +197,7 @@ sharpening so the sharpeners do not amplify the noise they were meant to remove.
 
 ### Danbooru Nodes (`AlcheminePack/Danbooru`)
 
-> ℹ️ These nodes use plain `requests` (`danbooru_requests.py`) — no browser dependency. A Playwright-based variant (`danbooru.py`) is kept in the source tree as an alternative; to use it instead, swap the import in `__init__.py` and `pip install playwright`. An optional Webshare proxy can be configured via `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` in `.env`.
+> ℹ️ These nodes use plain `requests` (`danbooru_requests.py`) — no browser dependency. A Playwright-based variant (`danbooru.py`) is kept in the source tree as an alternative; to use it instead, swap the import in `__init__.py` and `pip install playwright`. It is not a full drop-in, though: its Popular Posts node has no `offset` parameter (`random=False` returns the top posts re-sorted by score instead of walking the ranking), and it caches every response for the process lifetime with no TTL. An optional Webshare proxy can be configured via `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` in `.env`.
 
 
 ![Danbooru Workflow](workflows/comfyui-alchemine-pack-workflow-Danbooru.png)
@@ -287,6 +293,8 @@ A single node for every OpenAI-compatible backend — OpenAI, vLLM, Ollama's `/v
 |--------|-------------|
 | `response` | The model's answer (with any `<think>` block stripped out) |
 | `reasoning` | The reasoning/thinking trace, from `reasoning_content` or an inline `<think>...</think>` block (empty if none) |
+
+> **Note:** Responses are cached in-memory (LRU, last 10 unique input combinations) — re-running an identical request returns the cached response without calling the API.
 
 ---
 
@@ -384,7 +392,7 @@ A single node for every OpenAI-compatible backend — OpenAI, vLLM, Ollama's `/v
 |--------|-------------|
 | `video` | Generated clip (with audio), also previewed inline on the node |
 
-> **Credentials:** Provide the three tokens as node inputs, or leave them empty to read `GROK_ACCESS_TOKEN` / `GROK_REFRESH_TOKEN` / `GROK_CLIENT_ID` from the environment. The access token is auto-refreshed on a 401.
+> **Credentials:** Provide the three tokens as node inputs, or leave them empty to read `GROK_ACCESS_TOKEN` / `GROK_REFRESH_TOKEN` / `GROK_CLIENT_ID` from the environment. The access token is auto-refreshed on a 401/403.
 
 #### Grok Submit
 
@@ -439,7 +447,7 @@ Same inputs as **Grok Generate** (minus `poll_interval`/`timeout`), plus an opti
 | `CLIP` | CLIP patched with the referenced LoRAs |
 | `STRING` | The prompt with all lora tags stripped out |
 
-- Tag format: `<lora:name:model_weight:clip_weight>` — the clip weight is optional and defaults to the model weight; a tag with no weight loads at 0.
+- Tag format: `<lora:name:model_weight:clip_weight>` — the clip weight is optional and defaults to the model weight. A tag without any numeric weight (`<lora:name>`) is not recognized as a lora tag: it is neither loaded nor stripped from the output text. Use `<lora:name:0>` to load at weight 0.
 - `name` is matched as a prefix against files in the `loras` folder; unmatched tags are skipped.
 - The patched result is cached while `text`/`model`/`clip` are unchanged, skipping LoRA re-loading and re-patching.
 
@@ -541,7 +549,7 @@ OPENAI_API_KEY=your-api-key
 
 ### Grok credentials (`.env` or node inputs)
 
-The **Grok Generate** node reads its credentials from the node inputs first, falling back to these `.env` variables when the inputs are empty:
+The **Grok** nodes (Generate / Submit / Collect) read their credentials from the node inputs first, falling back to these `.env` variables when the inputs are empty:
 
 ```
 GROK_ACCESS_TOKEN=...
@@ -561,10 +569,13 @@ Set `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` in `.env` to route the
 
 ```
 Input: dog, cat, white dog, black cat
-Blacklist: cat
+Blacklist: ^cat$
 Output: white dog, black cat
-Filtered: dog, cat
+Filtered: ['cat', 'dog']   (one entry per step: FilterTags, then FilterSubtags)
 ```
+
+Blacklist tokens are regexes matched anywhere in a tag, so a bare `cat` would
+also remove `black cat` — anchor with `^cat$` to match the tag exactly.
 
 ### FilterSubtags Example
 

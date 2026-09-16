@@ -46,7 +46,7 @@ PACKAGE_NAME = _package_name()
 # One logger for the whole pack, so the level is set in one place:
 #     logging.getLogger(PACKAGE_NAME).setLevel(logging.DEBUG)
 # The per-node label comes from the message, not from the logger name:
-# `logger.info("[TagGenerator] ...")` renders as `[<pack>/TagGenerator]`.
+# `logger.info("[FilterTags] ...")` renders as `[<pack>/FilterTags]`.
 # Untagged lines fall back to the module the call came from.
 _NODE_TAG_RE = re.compile(r"^\[([^\]]+)\]\s*")
 
