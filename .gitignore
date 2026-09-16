@@ -6,7 +6,3 @@ __pycache__/
 
 playground/
 jobs.lock
-resources/*.npz
-
-# build caches: rebuildable from the dump, and big enough to notice
-docs/tag-consistency-guard/*.npz

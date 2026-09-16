@@ -6,7 +6,6 @@ from .nodes.danbooru_requests import (
     DanbooruPopularPostsTagsRetriever,
     DanbooruPostsDownloader,
 )
-from .nodes.daam import DAAMSamplerCustom, DAAMTagExplorer
 from .nodes.everywhere import AnythingEverywhereExtended
 from .nodes.flow_control import LazyExecution
 from .nodes.grok import GrokGenerate, GrokSubmit, GrokCollect
@@ -27,10 +26,6 @@ from .nodes.prompt import (
     SDXLAutoBreak,
     SubstituteTags,
     SeparateLoraTags,
-    ConsistencyGuard,
-    TagGenerator,
-    ClassifyTags,
-    GroupTags,
     TextPrompt,
 )
 
@@ -38,9 +33,6 @@ from .nodes.prompt import (
 NODE_CLASS_MAPPINGS = {
     # AlcheminePack/Everywhere #######################################################
     "Anything Everywhere Extended": AnythingEverywhereExtended,
-    # AlcheminePack/DAAM #############################################################
-    "DAAMSamplerCustom": DAAMSamplerCustom,
-    "DAAMTagExplorer": DAAMTagExplorer,
     # AlcheminePack/Danbooru #########################################################
     "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
     "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
@@ -79,10 +71,6 @@ NODE_CLASS_MAPPINGS = {
     "SDXLAutoBreak": SDXLAutoBreak,
     "SubstituteTags": SubstituteTags,
     "SeparateLoraTags": SeparateLoraTags,
-    "ConsistencyGuard": ConsistencyGuard,
-    "TagGenerator": TagGenerator,
-    "ClassifyTags": ClassifyTags,
-    "GroupTags": GroupTags,
     "TextPrompt": TextPrompt,
 }
 
@@ -90,9 +78,6 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     # AlcheminePack/Everywhere #######################################################
     "Anything Everywhere Extended": "Everywhere",
-    # AlcheminePack/DAAM #############################################################
-    "DAAMSamplerCustom": "Sampler Custom (DAAM)",
-    "DAAMTagExplorer": "DAAM Tag Explorer",
     # AlcheminePack/Danbooru #########################################################
     "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
     "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
@@ -131,14 +116,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SDXLAutoBreak": "SDXL Auto Break",
     "SubstituteTags": "Substitute Tags",
     "SeparateLoraTags": "Separate Lora Tags",
-    "ConsistencyGuard": "Consistency Guard",
-    "TagGenerator": "Tag Generator",
-    "ClassifyTags": "Classify Tags",
-    "GroupTags": "Group Tags",
     "TextPrompt": "Text Prompt",
 }
 
 
-# TagGenerator draws each category toggle and its share on one row; see
-# web/js/tag_generator_categories.js
 WEB_DIRECTORY = "./web/js"
