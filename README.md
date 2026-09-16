@@ -290,32 +290,9 @@ A single node for every OpenAI-compatible backend — OpenAI, vLLM, Ollama's `/v
 
 ---
 
-### Evaluate Nodes (`AlcheminePack/Evaluate`)
-
-| Node | Description |
-|------|-------------|
-| **Evaluate** | Runs user-defined Python code against an input string and returns the transformed result. Useful for ad-hoc tag manipulation inside a workflow. |
-
-#### Evaluate
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `tag` | STRING | (required) | Input string passed to `main(tag)` |
-| `code` | STRING (multiline) | sort-tags snippet | Python source that must define `def main(tag: str) -> str` |
-
-| Output | Description |
-|--------|-------------|
-| `tag` | The string returned by `main(tag)` |
-
-The default code sorts comma-separated tags alphabetically:
-
-```python
-def main(tag: str) -> str:
-    tags = [t.strip() for t in tag.split(",") if t.strip()]
-    return ", ".join(sorted(tags))
-```
-
-> ⚠️ **Security note:** `Evaluate` executes arbitrary Python via `exec()`. Only use it with code you trust.
+> ℹ️ **The Evaluate node moved out of this pack.** It now lives in
+> [comfyui-evaluate-pack](https://github.com/alchemine/comfyui-evaluate-pack). The node id is unchanged,
+> so existing workflows keep loading once that pack is installed.
 
 ---
 

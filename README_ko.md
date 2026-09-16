@@ -291,32 +291,9 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 
 ---
 
-### Evaluate 노드 (`AlcheminePack/Evaluate`)
-
-| 노드 | 설명 |
-|------|------|
-| **Evaluate** | 사용자 정의 Python 코드를 입력 문자열에 적용해 변환된 결과를 반환합니다. 워크플로우 내 즉석 태그 가공에 유용합니다. |
-
-#### Evaluate
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `tag` | STRING | (필수) | `main(tag)`에 전달될 입력 문자열 |
-| `code` | STRING (multiline) | 태그 정렬 스니펫 | `def main(tag: str) -> str`을 정의해야 하는 Python 코드 |
-
-| 출력 | 설명 |
-|------|------|
-| `tag` | `main(tag)`의 반환값 |
-
-기본 코드는 쉼표로 구분된 태그를 알파벳순으로 정렬합니다:
-
-```python
-def main(tag: str) -> str:
-    tags = [t.strip() for t in tag.split(",") if t.strip()]
-    return ", ".join(sorted(tags))
-```
-
-> ⚠️ **보안 주의:** `Evaluate`는 `exec()`로 임의의 Python 코드를 실행합니다. 신뢰할 수 있는 코드만 사용하세요.
+> ℹ️ **Evaluate 노드는 이 팩에서 분리되었습니다.** 이제
+> [comfyui-evaluate-pack](https://github.com/alchemine/comfyui-evaluate-pack)에 있습니다. 노드 id는
+> 그대로라 해당 팩을 설치하면 기존 워크플로가 그대로 열립니다.
 
 ---
 

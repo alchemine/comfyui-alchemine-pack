@@ -11,7 +11,6 @@ from .nodes.flow_control import LazyExecution
 from .nodes.grok import GrokGenerate, GrokSubmit, GrokCollect
 from .nodes.image import AdjustImage
 from .nodes.inference import OpenAIInference
-from .nodes.evaluate import Evaluate
 from .nodes.lora import DownloadImage, SaveImageWithText
 from .nodes.model import CachedLoraTagLoader
 from .nodes.api import LoadWorkflow, ApiGenerate, ApiSubmit, ApiCollect
@@ -48,8 +47,6 @@ NODE_CLASS_MAPPINGS = {
     "AdjustImage": AdjustImage,
     # AlcheminePack/Inference ########################################################
     "OpenAIInference": OpenAIInference,
-    # AlcheminePack/Evaluate #########################################################
-    "Evaluate": Evaluate,
     # AlcheminePack/Lora #############################################################
     "DownloadImage": DownloadImage,
     "SaveImageWithText": SaveImageWithText,
@@ -93,8 +90,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AdjustImage": "Adjust Image",
     # AlcheminePack/Inference ########################################################
     "OpenAIInference": "OpenAI Inference",
-    # AlcheminePack/Evaluate #########################################################
-    "Evaluate": "Evaluate",
     # AlcheminePack/Lora #############################################################
     "DownloadImage": "Download Image",
     "SaveImageWithText": "Save Image With Text",
