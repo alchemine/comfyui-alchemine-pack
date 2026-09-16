@@ -56,6 +56,3 @@ class AnythingEverywhereExtended(io.ComfyNode):
         # Never actually runs: no outputs means nothing depends on it, and the
         # UE frontend strips it from the submitted prompt.
         return io.NodeOutput()
-
-
-NODES = [AnythingEverywhereExtended]

@@ -1,6 +1,6 @@
 # ComfyUI-Alchemine-Pack
 
-[ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다. 프롬프트 처리, Danbooru 연동, LLM 추론, LoRA 태그 로딩, Grok 이미지-투-비디오, 원격 ComfyUI API 실행, 워크플로우 제어 등 다양한 유틸리티 노드를 제공합니다.
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다. 프롬프트 처리, Danbooru 연동, LLM 추론, LoRA 태그 로딩, Grok 이미지-투-비디오, 원격 ComfyUI API 실행, 워크플로우 제어, 이미지 보정, 입력 브로드캐스트 등 다양한 유틸리티 노드를 제공합니다.
 
 ## 설치 방법
 
@@ -126,8 +126,6 @@
 | `text_without_lora` | lora 태그가 제거된 텍스트 (원본 공백/줄바꿈 최대한 유지) |
 | `text_with_lora` | 중복 제거된 lora 태그들을 공백으로 join한 문자열 (동일 lora는 마지막 가중치 사용) |
 
----
-
 #### TextPrompt
 
 ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중에 필드를
@@ -135,6 +133,11 @@ ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중�
 노드는 그 플래그를 꺼서 위젯을 일반 텍스트 박스처럼 동작하게 하고, 대신
 `{option1|option2|...}` 문법을 실행 시점에 Python에서 해석합니다(그룹당 무작위
 1개 선택, 중첩 지원).
+
+[ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack)이 설치되어
+있으면 그쪽 와일드카드 엔진을 대신 사용해 `__wildcard__` 파일 참조, `$$` 다중
+선택, `#` 주석까지 해석합니다 — TextPrompt 하나로 ImpactWildcardProcessor를
+대체할 수 있습니다. 없으면 `{a|b}` 문법만 해석합니다.
 
 | 파라미터 | 타입 | 기본값 | 설명 |
 |----------|------|--------|------|
@@ -192,7 +195,7 @@ denoise → edge enhance → CAS → local contrast → resize. 디노이즈가 
 
 ### Danbooru 노드 (`AlcheminePack/Danbooru`)
 
-> ℹ️ 이 노드들은 순수 `requests`(`danbooru_requests.py`)를 사용합니다 — 브라우저 의존성 없음. Playwright 기반 변형(`danbooru.py`)도 대체용으로 소스에 남겨두었으며, 그걸 쓰려면 `__init__.py`의 import를 바꾸고 `pip install playwright`를 실행하세요. 선택적으로 `.env`의 `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD`로 Webshare 프록시를 설정할 수 있습니다.
+> ℹ️ 이 노드들은 순수 `requests`(`danbooru_requests.py`)를 사용합니다 — 브라우저 의존성 없음. Playwright 기반 변형(`danbooru.py`)도 대체용으로 소스에 남겨두었으며, 그걸 쓰려면 `__init__.py`의 import를 바꾸고 `pip install playwright`를 실행하세요. 단, 완전한 호환은 아닙니다: Popular Posts 노드에 `offset` 파라미터가 없고(`random=False`는 순위를 따라가는 대신 상위 포스트를 score 순으로 재정렬해 반환), 모든 응답을 TTL 없이 프로세스 생존 동안 캐싱합니다. 선택적으로 `.env`의 `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD`로 Webshare 프록시를 설정할 수 있습니다.
 
 
 ![Danbooru Workflow](workflows/comfyui-alchemine-pack-workflow-Danbooru.png)
@@ -288,6 +291,8 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 |------|------|
 | `response` | 모델의 답변 (`<think>` 블록은 제거됨) |
 | `reasoning` | 사고 과정. `reasoning_content` 필드 또는 인라인 `<think>...</think>` 블록에서 추출 (없으면 빈 문자열) |
+
+> **참고:** 응답은 인메모리 캐싱됩니다 (LRU, 최근 10개 입력 조합) — 완전히 동일한 요청을 다시 실행하면 API 호출 없이 캐시된 응답을 반환합니다.
 
 ---
 
@@ -385,7 +390,7 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 |------|------|
 | `video` | 생성된 클립(소리 포함). 노드에서 인라인 미리보기로도 표시됨 |
 
-> **자격증명:** 세 토큰을 노드 입력으로 직접 넣거나, 비워 두면 `GROK_ACCESS_TOKEN` / `GROK_REFRESH_TOKEN` / `GROK_CLIENT_ID` 환경변수에서 읽습니다. 401 발생 시 access token은 자동 갱신됩니다.
+> **자격증명:** 세 토큰을 노드 입력으로 직접 넣거나, 비워 두면 `GROK_ACCESS_TOKEN` / `GROK_REFRESH_TOKEN` / `GROK_CLIENT_ID` 환경변수에서 읽습니다. 401/403 발생 시 access token은 자동 갱신됩니다.
 
 #### Grok Submit
 
@@ -440,7 +445,7 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 | `CLIP` | 해당 LoRA로 패치된 CLIP |
 | `STRING` | 모든 lora 태그가 제거된 프롬프트 |
 
-- 태그 형식: `<lora:name:model_weight:clip_weight>` — clip weight는 선택이며 생략 시 model weight를 따름. weight 없는 태그는 0으로 로드됩니다.
+- 태그 형식: `<lora:name:model_weight:clip_weight>` — clip weight는 선택이며 생략 시 model weight를 따름. 숫자 weight가 아예 없는 태그(`<lora:name>`)는 lora 태그로 인식되지 않아 로드되지도, 출력 텍스트에서 제거되지도 않습니다. 가중치 0으로 로드하려면 `<lora:name:0>`을 쓰세요.
 - `name`은 `loras` 폴더 파일명의 접두사로 매칭되며, 매칭되지 않는 태그는 건너뜁니다.
 - `text`/`model`/`clip`이 그대로면 패치 결과를 캐시에서 반환해 LoRA 재로드·재패치를 생략합니다.
 
@@ -542,7 +547,7 @@ OPENAI_API_KEY=your-api-key
 
 ### Grok 자격증명 (`.env` 또는 노드 입력)
 
-**Grok Generate** 노드는 자격증명을 노드 입력에서 먼저 읽고, 입력이 비어 있으면 아래 `.env` 변수로 대체합니다:
+**Grok** 노드(Generate / Submit / Collect)는 자격증명을 노드 입력에서 먼저 읽고, 입력이 비어 있으면 아래 `.env` 변수로 대체합니다:
 
 ```
 GROK_ACCESS_TOKEN=...
@@ -562,10 +567,13 @@ access token은 401/403에서 자동 갱신됩니다. `Grok token refresh failed
 
 ```
 입력: dog, cat, white dog, black cat
-블랙리스트: cat
+블랙리스트: ^cat$
 출력: white dog, black cat
-필터됨: dog, cat
+필터됨: ['cat', 'dog']   (단계별 한 칸: FilterTags, 그다음 FilterSubtags)
 ```
+
+블랙리스트 토큰은 태그 내부 어디든 매칭되는 정규식이라, 그냥 `cat`을 쓰면
+`black cat`까지 제거됩니다 — 태그를 정확히 맞추려면 `^cat$`처럼 앵커를 쓰세요.
 
 ### FilterSubtags 예시
 
@@ -573,15 +581,6 @@ access token은 401/403에서 자동 갱신됩니다. `Grok token refresh failed
 입력: dog, cat, white dog, black cat
 출력: white dog, black cat
 ('dog'와 'cat'이 'white dog'와 'black cat'의 서브태그이므로 제거됨)
-```
-
-### SubstituteTags 예시
-
-```
-# "girl"이 없으면 "1boy"를 "1girl, 1boy"로 교체
-pattern: 1boy
-repl: 1girl, 1boy
-skip_if: girl
 ```
 
 ### SeparateLoraTags 예시
@@ -599,6 +598,15 @@ text_with_lora: <lora:characters\lulurka\1-moriaruruka.safetensors:0.7> <lora:ch
 - lora 블록 뒤에 `,`가 따라오면 앞쪽 콤마/공백까지 함께 제거하여 이중 콤마를 방지합니다.
 - lora 블록 뒤에 `,`가 없으면 앞쪽 콤마는 보존하고 선행 공백만 제거합니다.
 - 동일한 lora가 여러 번 등장하면 마지막에 지정된 가중치를 사용합니다 (예: 위 예시에서 `3-moriaruruka.safetensors`의 최종 가중치는 `1.0`).
+
+### SubstituteTags 예시
+
+```
+# "girl"이 없으면 "1boy"를 "1girl, 1boy"로 교체
+pattern: 1boy
+repl: 1girl, 1boy
+skip_if: girl
+```
 
 ## 라이선스
 

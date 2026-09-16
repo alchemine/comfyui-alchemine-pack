@@ -203,7 +203,7 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
         text: str,
         category: str = "General",
         order: str = "Frequency",
-        threshold: float = 0.5,
+        threshold: float = 0.3,
         n_min_tags: int = 0,
         n_max_tags: int = 100,
     ) -> tuple[str]:
@@ -268,7 +268,7 @@ class DanbooruRelatedTagsRetriever(BaseDanbooru):
         text: str,
         category: str = "General",
         order: str = "Frequency",
-        threshold: float = 0.5,
+        threshold: float = 0.3,
         n_min_tags: int = 0,
         n_max_tags: int = 100,
     ) -> tuple:

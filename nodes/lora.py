@@ -37,7 +37,7 @@ class DownloadImage(BaseLora):
     CATEGORY = "AlcheminePack/Lora"
 
     @classmethod
-    def execute(cls, url: str, dir_path: str) -> tuple[str]:
+    def execute(cls, url: str, dir_path: str) -> tuple:
         output_dir = Path(folder_paths.get_output_directory())
         dir_path = output_dir / dir_path
         if not exists(dir_path):
@@ -46,19 +46,15 @@ class DownloadImage(BaseLora):
         extension = url.split(".")[-1]
         idx = 1 + len(os.listdir(dir_path))
         file_path = dir_path / f"{idx}.{extension}"
-        if exists(file_path):
-            pil_image = Image.open(file_path).convert("RGB")
-            image_tensor = torch.from_numpy(np.array(pil_image)).float() / 255.0
-            image = image_tensor.unsqueeze(0)
-            return (image, file_path)
+        if not exists(file_path):
+            response = requests.get(url)
+            response.raise_for_status()
+            with open(file_path, "wb") as f:
+                f.write(response.content)
 
-        response = requests.get(url)
-        response.raise_for_status()
-        image = response.content
-
-        with open(file_path, "wb") as f:
-            f.write(image)
-
+        pil_image = Image.open(file_path).convert("RGB")
+        image_tensor = torch.from_numpy(np.array(pil_image)).float() / 255.0
+        image = image_tensor.unsqueeze(0)
         return (image, relpath(file_path, output_dir))
 
     @classmethod
