@@ -1,11 +1,5 @@
 """Custom nodes mappings."""
 
-from .nodes.danbooru_requests import (
-    DanbooruRelatedTagsRetriever,
-    DanbooruPostTagsRetriever,
-    DanbooruPopularPostsTagsRetriever,
-    DanbooruPostsDownloader,
-)
 from .nodes.everywhere import AnythingEverywhereExtended
 from .nodes.flow_control import LazyExecution
 from .nodes.grok import GrokGenerate, GrokSubmit, GrokCollect
@@ -32,11 +26,6 @@ from .nodes.prompt import (
 NODE_CLASS_MAPPINGS = {
     # AlcheminePack/Everywhere #######################################################
     "Anything Everywhere Extended": AnythingEverywhereExtended,
-    # AlcheminePack/Danbooru #########################################################
-    "DanbooruRelatedTagsRetriever": DanbooruRelatedTagsRetriever,
-    "DanbooruPostTagsRetriever": DanbooruPostTagsRetriever,
-    "DanbooruPopularPostsTagsRetriever": DanbooruPopularPostsTagsRetriever,
-    "DanbooruPostsDownloader": DanbooruPostsDownloader,
     # AlcheminePack/FlowControl ######################################################
     "LazyExecution": LazyExecution,
     # AlcheminePack/Grok #############################################################
@@ -75,11 +64,6 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     # AlcheminePack/Everywhere #######################################################
     "Anything Everywhere Extended": "Everywhere",
-    # AlcheminePack/Danbooru #########################################################
-    "DanbooruRelatedTagsRetriever": "Danbooru Related Tags Retriever",
-    "DanbooruPostTagsRetriever": "Danbooru Post Tags Retriever",
-    "DanbooruPopularPostsTagsRetriever": "Danbooru Popular Posts Tags Retriever",
-    "DanbooruPostsDownloader": "Danbooru Posts Downloader",
     # AlcheminePack/FlowControl ######################################################
     "LazyExecution": "Lazy Execution",
     # AlcheminePack/Grok #############################################################

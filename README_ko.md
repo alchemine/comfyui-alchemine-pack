@@ -1,6 +1,6 @@
 # ComfyUI-Alchemine-Pack
 
-[ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다. 프롬프트 처리, Danbooru 연동, LLM 추론, LoRA 태그 로딩, Grok 이미지-투-비디오, 원격 ComfyUI API 실행, 워크플로우 제어, 이미지 보정, 입력 브로드캐스트 등 다양한 유틸리티 노드를 제공합니다.
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다. 프롬프트 처리, LLM 추론, LoRA 태그 로딩, Grok 이미지-투-비디오, 원격 ComfyUI API 실행, 워크플로우 제어, 이미지 보정, 입력 브로드캐스트 등 다양한 유틸리티 노드를 제공합니다.
 
 ## 설치 방법
 
@@ -193,72 +193,9 @@ denoise → edge enhance → CAS → local contrast → resize. 디노이즈가 
 |------|------|
 | **Everywhere** | 고정된 이름의 입력(`model`, `clip`, `vae`, `positive`, `negative`, `latent_image`, `seed`, `blacklist`)을 갖는 [cg-use-everywhere](https://github.com/chrisgoringe/cg-use-everywhere) 브로드캐스터. 입력 이름이 고정되어 UE의 이름 기반 라우팅이 유지되므로, 두 컨디셔닝을 수동 이름 변경 없이 구분해 전달합니다. cg-use-everywhere 필요. |
 
-### Danbooru 노드 (`AlcheminePack/Danbooru`)
-
-> ℹ️ 이 노드들은 순수 `requests`(`danbooru_requests.py`)를 사용합니다 — 브라우저 의존성 없음. Playwright 기반 변형(`danbooru.py`)도 대체용으로 소스에 남겨두었으며, 그걸 쓰려면 `__init__.py`의 import를 바꾸고 `pip install playwright`를 실행하세요. 단, 완전한 호환은 아닙니다: Popular Posts 노드에 `offset` 파라미터가 없고(`random=False`는 순위를 따라가는 대신 상위 포스트를 score 순으로 재정렬해 반환), 모든 응답을 TTL 없이 프로세스 생존 동안 캐싱합니다. 선택적으로 `.env`의 `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD`로 Webshare 프록시를 설정할 수 있습니다.
-
-
-![Danbooru Workflow](workflows/comfyui-alchemine-pack-workflow-Danbooru.png)
-
-| 노드 | 설명 |
-|------|------|
-| **Danbooru Post Tags Retriever** | 포스트 ID로 특정 Danbooru 포스트의 태그를 가져옵니다. |
-| **Danbooru Related Tags Retriever** | Danbooru에서 빈도/유사도 기반으로 관련 태그를 검색합니다. |
-| **Danbooru Popular Posts Tags Retriever** | 인기 포스트(일간/주간/월간)에서 태그를 가져옵니다. |
-| **Danbooru Posts Downloader** | 검색 태그 기반으로 Danbooru 이미지를 다운로드합니다. |
-
-> ⚠️ **주의:** 요청을 줄이기 위해 응답을 캐싱합니다 — 특정 post(id 기준)는 프로세스 생존 동안, 가변 엔드포인트(popular / related / search)는 1시간 TTL로 캐싱됩니다. 과도하게 쓰면 여전히 Danbooru 레이트리밋에 걸릴 수 있습니다.
-
-#### Danbooru Post Tags Retriever
-
-| 파라미터 | 타입 | 설명 |
-|----------|------|------|
-| `post_id` | STRING | Danbooru 포스트 ID |
-
-| 출력 | 설명 |
-|------|------|
-| `full_tags` | 전체 태그 (캐릭터 + 저작권 + 아티스트 + 일반, 메타 제외) |
-| `general_tags` | 일반 태그만 |
-| `character_tags` | 캐릭터 태그만 |
-| `copyright_tags` | 저작권 태그만 |
-| `artist_tags` | 아티스트 태그만 |
-| `meta_tags` | 메타 태그만 |
-| `image_url` | 이미지 URL |
-
-#### Danbooru Related Tags Retriever
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `text` | STRING | (필수) | 입력 태그 |
-| `category` | ENUM | "General" | 태그 카테고리 필터 (General/Character/Copyright/Artist/Meta) |
-| `order` | ENUM | "Frequency" | 정렬 순서 (Cosine/Jaccard/Overlap/Frequency) |
-| `threshold` | FLOAT | 0.3 | 최소 유사도 임계값 |
-| `n_min_tags` | INT | 0 | 반환할 최소 태그 수 |
-| `n_max_tags` | INT | 100 | 반환할 최대 태그 수 |
-
-#### Danbooru Popular Posts Tags Retriever
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `date` | STRING | "" | 날짜 (YYYY-MM-DD 형식, 비워두면 최신) |
-| `scale` | ENUM | "day" | 시간 범위 (day/week/month) |
-| `n` | INT | 1 | 가져올 포스트 수 |
-| `random` | BOOLEAN | True | `True`: 무작위 `n`개 / `False`: 인기 순위의 `[offset, offset+n)` 구간 |
-| `seed` | INT | 0 | 랜덤 시드 (`random=True`일 때만 사용) |
-| `offset` | INT | 0 | 인기 순위의 시작 위치 (`random=False`일 때만 사용). `control_after_generate`가 붙어 있어 *increment*로 두면 큐마다 순위를 한 칸씩 내려감. 해당 순위가 없으면 에러. |
-
-출력은 **리스트**(포스트당 한 칸): `full_tags` / `general_tags` / `character_tags` / `copyright_tags` / `artist_tags` / `meta_tags`.
-
-> **팁 — 순위를 하나씩 훑기:** `random=False`, `n=1`, `offset` 컨트롤을 *increment*로 설정. 큐를 누를 때마다 다음 인기글을 반환하며, 그 글이 있는 페이지 1개만 가져옴.
-
-#### Danbooru Posts Downloader
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `tags` | STRING | "" | 검색 태그 |
-| `n` | INT | 1 | 다운로드할 이미지 수 |
-| `dir_path` | STRING | "" | 출력 디렉터리 (ComfyUI output 폴더 기준 상대 경로) |
-| `prefix` | STRING | "" | 파일명 접두사 |
+> ℹ️ **Danbooru 노드는 이 팩에서 분리되었습니다.** 이제
+> [comfyui-danbooru-pack](https://github.com/alchemine/comfyui-danbooru-pack)에 있습니다. 노드 id는 그대로라
+> 해당 팩을 설치하면 기존 워크플로우가 그대로 열립니다.
 
 ---
 
@@ -556,10 +493,6 @@ GROK_CLIENT_ID=...
 ```
 
 access token은 401/403에서 자동 갱신됩니다. `Grok token refresh failed (...)` 에러가 뜨면 refresh token이나 client_id가 만료/폐기된 것이니, x.ai에서 다시 인증해 값을 갱신하세요.
-
-### Webshare 프록시 (선택, Danbooru)
-
-`.env`에 `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD`를 넣으면 Danbooru 노드가 프록시를 경유합니다. 비워 두면 직결합니다.
 
 ## 예시
 
