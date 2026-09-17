@@ -1,6 +1,6 @@
 # ComfyUI-Alchemine-Pack
 
-A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, Danbooru integration, LLM inference, LoRA-tag loading, Grok image-to-video, remote ComfyUI API execution, workflow control, image adjustment, and input broadcasting.
+A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, LLM inference, LoRA-tag loading, Grok image-to-video, remote ComfyUI API execution, workflow control, image adjustment, and input broadcasting.
 
 ## Installation
 
@@ -195,72 +195,9 @@ sharpening so the sharpeners do not amplify the noise they were meant to remove.
 |------|-------------|
 | **Everywhere** | A [cg-use-everywhere](https://github.com/chrisgoringe/cg-use-everywhere) broadcaster with fixed, named inputs (`model`, `clip`, `vae`, `positive`, `negative`, `latent_image`, `seed`, `blacklist`). The pinned input names keep UE's name-based routing working, so the two conditionings stay apart without renaming slots by hand. Requires cg-use-everywhere. |
 
-### Danbooru Nodes (`AlcheminePack/Danbooru`)
-
-> ℹ️ These nodes use plain `requests` (`danbooru_requests.py`) — no browser dependency. A Playwright-based variant (`danbooru.py`) is kept in the source tree as an alternative; to use it instead, swap the import in `__init__.py` and `pip install playwright`. It is not a full drop-in, though: its Popular Posts node has no `offset` parameter (`random=False` returns the top posts re-sorted by score instead of walking the ranking), and it caches every response for the process lifetime with no TTL. An optional Webshare proxy can be configured via `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` in `.env`.
-
-
-![Danbooru Workflow](workflows/comfyui-alchemine-pack-workflow-Danbooru.png)
-
-| Node | Description |
-|------|-------------|
-| **Danbooru Post Tags Retriever** | Retrieves tags from a specific Danbooru post by post ID. |
-| **Danbooru Related Tags Retriever** | Finds related tags by frequency/similarity from Danbooru. |
-| **Danbooru Popular Posts Tags Retriever** | Gets tags from popular posts (daily/weekly/monthly). |
-| **Danbooru Posts Downloader** | Downloads images from Danbooru based on search tags. |
-
-> ⚠️ **Note:** Responses are cached to limit requests — a single post (by id) is cached for the process lifetime, while volatile endpoints (popular / related / search) use a 1-hour TTL. Heavy use can still hit Danbooru's rate limits.
-
-#### Danbooru Post Tags Retriever
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `post_id` | STRING | Danbooru post ID |
-
-| Output | Description |
-|--------|-------------|
-| `full_tags` | All tags (character + copyright + artist + general, excludes meta) |
-| `general_tags` | General tags only |
-| `character_tags` | Character tags only |
-| `copyright_tags` | Copyright tags only |
-| `artist_tags` | Artist tags only |
-| `meta_tags` | Meta tags only |
-| `image_url` | Image URL |
-
-#### Danbooru Related Tags Retriever
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `text` | STRING | (required) | Input tag(s) |
-| `category` | ENUM | "General" | Tag category filter (General/Character/Copyright/Artist/Meta) |
-| `order` | ENUM | "Frequency" | Sort order (Cosine/Jaccard/Overlap/Frequency) |
-| `threshold` | FLOAT | 0.3 | Minimum similarity threshold |
-| `n_min_tags` | INT | 0 | Minimum number of tags to return |
-| `n_max_tags` | INT | 100 | Maximum number of tags to return |
-
-#### Danbooru Popular Posts Tags Retriever
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `date` | STRING | "" | Date (YYYY-MM-DD format, empty for latest) |
-| `scale` | ENUM | "day" | Time scale (day/week/month) |
-| `n` | INT | 1 | Number of posts to retrieve |
-| `random` | BOOLEAN | True | `True`: random sample of `n` posts; `False`: the ranked posts at `[offset, offset+n)` in popularity order |
-| `seed` | INT | 0 | Random seed (only used when `random=True`) |
-| `offset` | INT | 0 | Starting rank in popularity order (only used when `random=False`). Has `control_after_generate` — set it to *increment* to step down the ranking one post per run. Raises if the rank doesn't exist. |
-
-Outputs are **lists** (one entry per post): `full_tags` / `general_tags` / `character_tags` / `copyright_tags` / `artist_tags` / `meta_tags`.
-
-> **Tip — walk the ranking one at a time:** set `random=False`, `n=1`, and `offset`'s control to *increment*. Each queue returns the next most-popular post, fetching only the single page it lives on.
-
-#### Danbooru Posts Downloader
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `tags` | STRING | "" | Search tags |
-| `n` | INT | 1 | Number of images to download |
-| `dir_path` | STRING | "" | Output directory (relative to ComfyUI output folder) |
-| `prefix` | STRING | "" | Filename prefix |
+> ℹ️ **The Danbooru nodes moved out of this pack.** They now live in
+> [comfyui-danbooru-pack](https://github.com/alchemine/comfyui-danbooru-pack). Node ids are unchanged,
+> so existing workflows keep loading once that pack is installed.
 
 ---
 
@@ -558,10 +495,6 @@ GROK_CLIENT_ID=...
 ```
 
 The access token is auto-refreshed on a 401/403. If you hit a `Grok token refresh failed (...)` error, the refresh token or client_id has expired/been revoked — re-authenticate with x.ai and update these values.
-
-### Webshare proxy (optional, Danbooru)
-
-Set `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` in `.env` to route the Danbooru nodes through a proxy; leave them unset to connect directly.
 
 ## Examples
 
