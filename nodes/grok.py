@@ -28,6 +28,7 @@ _KIND = "grok"
 # this is generous.
 _STALE_SEC = 3600
 
+
 # 토큰·client_id는 명시적 입력으로 받거나, 비어 있으면 환경변수에서 읽는다 (코드에
 # 직접 넣지 않기). 환경변수가 없어도 팩 로딩이 깨지지 않도록 실제 API 호출 시점에 읽는다.
 class _Credentials:
@@ -39,18 +40,21 @@ class _Credentials:
         self.client_id = client_id
 
     @classmethod
-    def resolve(cls, access_token: str = "", refresh_token: str = "",
-                client_id: str = "") -> "_Credentials":
+    def resolve(
+        cls, access_token: str = "", refresh_token: str = "", client_id: str = ""
+    ) -> "_Credentials":
         """명시적 입력을 우선 사용하고, 비어 있으면 환경변수로 채운다."""
         access_token = access_token or os.environ.get("GROK_ACCESS_TOKEN", "")
         refresh_token = refresh_token or os.environ.get("GROK_REFRESH_TOKEN", "")
         client_id = client_id or os.environ.get("GROK_CLIENT_ID", "")
         missing = [
-            name for name, val in (
+            name
+            for name, val in (
                 ("GROK_ACCESS_TOKEN", access_token),
                 ("GROK_REFRESH_TOKEN", refresh_token),
                 ("GROK_CLIENT_ID", client_id),
-            ) if not val
+            )
+            if not val
         ]
         if missing:
             raise RuntimeError(
@@ -169,8 +173,13 @@ def generate_video(
 
 def _submit_job(creds: "_Credentials", body: dict) -> str:
     """body로 생성 요청만 보내고 request_id를 반환 (폴링하지 않음)."""
-    start = _api(creds, "POST", "https://api.x.ai/v1/videos/generations",
-                 headers={"Content-Type": "application/json"}, json=body)
+    start = _api(
+        creds,
+        "POST",
+        "https://api.x.ai/v1/videos/generations",
+        headers={"Content-Type": "application/json"},
+        json=body,
+    )
     start.raise_for_status()
     return start.json()["request_id"]
 
@@ -193,8 +202,9 @@ def _download(url: str, out_path: str) -> str:
     return out_path
 
 
-def _run_job(creds: "_Credentials", body: dict, out_path: str,
-             poll_interval: int, timeout: int) -> str:
+def _run_job(
+    creds: "_Credentials", body: dict, out_path: str, poll_interval: int, timeout: int
+) -> str:
     """이미 image url이 채워진 body로 생성 요청 → 폴링 → 파일 저장."""
     request_id = _submit_job(creds, body)
     deadline = time.time() + timeout
@@ -216,8 +226,10 @@ def _reserve_output(filename_prefix: str):
 
     Returns: (out_path, file, subfolder)
     """
-    full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
-        filename_prefix, folder_paths.get_output_directory()
+    full_output_folder, filename, counter, subfolder, _ = (
+        folder_paths.get_save_image_path(
+            filename_prefix, folder_paths.get_output_directory()
+        )
     )
     file = f"{filename}_{counter:05d}_.mp4"
     out_path = os.path.join(full_output_folder, file)
@@ -348,17 +360,46 @@ class GrokSubmit:
         # Always re-submit on each queue (fire-and-forget per run).
         return time.time()
 
-    async def submit(self, image, prompt, duration, resolution, model,
-                     filename_prefix, access_token="", refresh_token="",
-                     client_id="", label=""):
+    async def submit(
+        self,
+        image,
+        prompt,
+        duration,
+        resolution,
+        model,
+        filename_prefix,
+        access_token="",
+        refresh_token="",
+        client_id="",
+        label="",
+    ):
         return await asyncio.to_thread(
-            self._submit_sync, image, prompt, duration, resolution, model,
-            filename_prefix, access_token, refresh_token, client_id, label,
+            self._submit_sync,
+            image,
+            prompt,
+            duration,
+            resolution,
+            model,
+            filename_prefix,
+            access_token,
+            refresh_token,
+            client_id,
+            label,
         )
 
-    def _submit_sync(self, image, prompt, duration, resolution, model,
-                     filename_prefix, access_token, refresh_token, client_id,
-                     label):
+    def _submit_sync(
+        self,
+        image,
+        prompt,
+        duration,
+        resolution,
+        model,
+        filename_prefix,
+        access_token,
+        refresh_token,
+        client_id,
+        label,
+    ):
         creds = _Credentials.resolve(access_token, refresh_token, client_id)
         # No queue: only one Grok job in flight at a time. Guard the whole
         # check-then-submit so two concurrent submits can't both pass.
@@ -372,7 +413,9 @@ class GrokSubmit:
                         f"(request_id={cur.get('request_id')}); skipping submit"
                     )
                     return {"ui": {"text": ["(skipped: in progress)"]}, "result": ("",)}
-                logger.info(f"[GrokSubmit] stale lock ({age:.0f}s old); overriding and resubmitting")
+                logger.info(
+                    f"[GrokSubmit] stale lock ({age:.0f}s old); overriding and resubmitting"
+                )
 
             out_path, file, subfolder = _reserve_output(filename_prefix)
             body = _build_body(image, prompt, duration, resolution, model)
@@ -450,7 +493,9 @@ class GrokCollect:
         try:
             url = _poll_job(creds, rec["request_id"])
         except RuntimeError as e:
-            logger.warning(f"[GrokCollect] job {rec['request_id']} failed on remote; clearing lock: {e}")
+            logger.warning(
+                f"[GrokCollect] job {rec['request_id']} failed on remote; clearing lock: {e}"
+            )
             with joblock.guard:
                 joblock.write_lock(_KIND, None)
             return "skip"
@@ -468,15 +513,21 @@ class GrokCollect:
         )
         return rec["out_path"], rec["file"], rec["subfolder"], rec.get("label", "")
 
-    async def collect(self, wait_sec, poll_interval, access_token="",
-                      refresh_token="", client_id=""):
+    async def collect(
+        self, wait_sec, poll_interval, access_token="", refresh_token="", client_id=""
+    ):
         return await asyncio.to_thread(
-            self._collect_sync, wait_sec, poll_interval,
-            access_token, refresh_token, client_id,
+            self._collect_sync,
+            wait_sec,
+            poll_interval,
+            access_token,
+            refresh_token,
+            client_id,
         )
 
-    def _collect_sync(self, wait_sec, poll_interval, access_token,
-                      refresh_token, client_id):
+    def _collect_sync(
+        self, wait_sec, poll_interval, access_token, refresh_token, client_id
+    ):
         creds = _Credentials.resolve(access_token, refresh_token, client_id)
         deadline = time.time() + wait_sec
         while True:
@@ -494,5 +545,7 @@ class GrokCollect:
 
 # 사용 예 (단독 실행용)
 if __name__ == "__main__":
-    path = generate_video("start.png", "카메라가 천천히 줌인하며 머리카락이 바람에 흩날린다")
+    path = generate_video(
+        "start.png", "카메라가 천천히 줌인하며 머리카락이 바람에 흩날린다"
+    )
     logger.info(f"saved: {path}")
