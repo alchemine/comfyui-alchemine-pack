@@ -7,12 +7,9 @@ description = """Prompt filtering, Inference, API, Grok image-to-video, lazy exe
 [a/FlowControl](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png): lazy execution
 Cached LoRA Tag loader, Adjust Image, Everywhere broadcaster, etc."""
 
-version = "5.0.0"
+version = "5.0.1"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
-dependencies = [
-    "python-dotenv>=1.0.0",
-]
 
 [project.urls]
 Repository = "https://github.com/alchemine/comfyui-alchemine-pack"
@@ -23,3 +20,20 @@ Repository = "https://github.com/alchemine/comfyui-alchemine-pack"
 PublisherId = "alchemine"
 DisplayName = "ComfyUI-Alchemine-Pack"
 Icon = ""
+
+[tool.ruff]
+lint.select = [
+  "N805", # invalid-first-argument-name-for-method
+  "S307", # suspicious-eval-usage
+  "S102", # exec
+  "E",
+  "T",    # print-usage
+  "W",
+  # The "F" series in Ruff stands for "Pyflakes" rules, which catch various Python syntax errors and undefined names.
+  # See all rules here: https://docs.astral.sh/ruff/rules/#pyflakes-f
+  "F",
+]
+
+lint.ignore = ["E501", "E722", "E731", "E712", "E402", "E741"]
+
+exclude = ["*.ipynb"]

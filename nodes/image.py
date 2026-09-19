@@ -15,7 +15,6 @@ class BaseImage:
     """Base class for Image nodes."""
 
 
-
 #################################################################
 # Helpers
 #################################################################
@@ -24,7 +23,9 @@ def _rgb_to_luminance(image: torch.Tensor) -> torch.Tensor:
 
     image: (..., H, W, 3) in [0, 1]
     """
-    weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
+    weights = torch.tensor(
+        [0.299, 0.587, 0.114], device=image.device, dtype=image.dtype
+    )
     return (image[..., :3] * weights).sum(dim=-1, keepdim=True)
 
 
@@ -60,8 +61,12 @@ def _cas(rgb: torch.Tensor, sharpness: float) -> torch.Tensor:
     right = p[..., 1:-1, 2:]
     center = x
 
-    mn = torch.minimum(torch.minimum(torch.minimum(up, down), torch.minimum(left, right)), center)
-    mx = torch.maximum(torch.maximum(torch.maximum(up, down), torch.maximum(left, right)), center)
+    mn = torch.minimum(
+        torch.minimum(torch.minimum(up, down), torch.minimum(left, right)), center
+    )
+    mx = torch.maximum(
+        torch.maximum(torch.maximum(up, down), torch.maximum(left, right)), center
+    )
 
     # Adaptive weight: less sharpening where local contrast is already high.
     d = torch.clamp(torch.minimum(mn, 1.0 - mx) / (mx + 1e-6), 0.0, 1.0)
@@ -99,8 +104,12 @@ def _bilateral(rgb: torch.Tensor, strength: float, radius: int = 2) -> torch.Ten
     wsum = torch.zeros_like(x)
     for dy in range(-radius, radius + 1):
         for dx in range(-radius, radius + 1):
-            neighbor = p[..., radius + dy:radius + dy + h, radius + dx:radius + dx + w]
-            spatial = torch.exp(torch.tensor(-(dy * dy + dx * dx) / (2.0 * sigma_space**2)))
+            neighbor = p[
+                ..., radius + dy : radius + dy + h, radius + dx : radius + dx + w
+            ]
+            spatial = torch.exp(
+                torch.tensor(-(dy * dy + dx * dx) / (2.0 * sigma_space**2))
+            )
             color = torch.exp(-((neighbor - x) ** 2) / (2.0 * sigma_color**2))
             weight = spatial * color
             acc += neighbor * weight
