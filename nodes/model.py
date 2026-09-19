@@ -18,7 +18,6 @@ class BaseModel:
     """Base class for Model nodes."""
 
 
-
 #################################################################
 # Nodes
 #################################################################
@@ -129,7 +128,9 @@ class CachedLoraTagLoader(BaseModel):
                     lora_name = lora_file
                     break
             if lora_name is None:
-                logger.debug(f"bypassed lora tag: {(name, w_model, w_clip)} >> {lora_name}")
+                logger.debug(
+                    f"bypassed lora tag: {(name, w_model, w_clip)} >> {lora_name}"
+                )
                 continue
             logger.info(f"detected lora tag: {(name, w_model, w_clip)} >> {lora_name}")
 

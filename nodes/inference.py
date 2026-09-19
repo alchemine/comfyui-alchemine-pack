@@ -133,7 +133,10 @@ class OpenAIInference(BaseInference):
                 {"default": 100, "min": 1, "max": MAX_OUTPUT_TOKENS_LIMIT},
             ),
             "seed": ("INT", {"default": 0, "min": 0}),
-            "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.1}),
+            "temperature": (
+                "FLOAT",
+                {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.1},
+            ),
             "think": ("BOOLEAN", {"default": False}),
         },
         "optional": {

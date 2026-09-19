@@ -1,7 +1,6 @@
 """Nodes in AlcheminePack/Prompt."""
 
 import re
-import random
 import numbers
 import textwrap
 from functools import wraps
@@ -44,8 +43,7 @@ def blacklist_pattern(blacklist_tags: str) -> str:
     for key, values in wildcards.items():
         joined = f"({'|'.join(values)})"
         for form in _WILDCARD_FORMS:
-            blacklist_tags = blacklist_tags.replace(form.format(key=key),
-                                                    joined)
+            blacklist_tags = blacklist_tags.replace(form.format(key=key), joined)
     patterns = []
     for t in (t.strip() for t in blacklist_tags.split(",")):
         if not t:
@@ -77,9 +75,11 @@ def log_prompt(func):
                 wrapped = textwrap.wrap(line, width=col_width2) or [""]
                 for i, wline in enumerate(wrapped):
                     if first_row and i == 0:
-                        row = f"│ {label:<{col_width1-2}} │ {wline.ljust(col_width2)} │"
+                        row = (
+                            f"│ {label:<{col_width1 - 2}} │ {wline.ljust(col_width2)} │"
+                        )
                     else:
-                        row = f"│ {'':<{col_width1-2}} │ {wline.ljust(col_width2)} │"
+                        row = f"│ {'':<{col_width1 - 2}} │ {wline.ljust(col_width2)} │"
                     out.append(row)
                     first_row = False
             return "\n".join(out)
@@ -91,9 +91,9 @@ def log_prompt(func):
         output_val = result[0]
 
         # NOTE. 2: space for tags
-        top = f"┌{'─'*col_width1}┬{'─'*(2+col_width2)}┐"
-        mid = f"├{'─'*col_width1}┼{'─'*(2+col_width2)}┤"
-        bot = f"└{'─'*col_width1}┴{'─'*(2+col_width2)}┘"
+        top = f"┌{'─' * col_width1}┬{'─' * (2 + col_width2)}┐"
+        mid = f"├{'─' * col_width1}┼{'─' * (2 + col_width2)}┤"
+        bot = f"└{'─' * col_width1}┴{'─' * (2 + col_width2)}┘"
 
         # Prepare table content
         node_row = format_multiline("Node", node_label)
@@ -393,11 +393,7 @@ class FilterTags(BasePrompt):
 
         groups = text.split("BREAK")
         fixed_tags_set = {
-            
-                cls.normalize_tag(t)
-                for t in re.split(r"BREAK|,", fixed_tags)
-                if t.strip()
-            
+            cls.normalize_tag(t) for t in re.split(r"BREAK|,", fixed_tags) if t.strip()
         }
 
         # 2. Compile blacklist
@@ -494,11 +490,7 @@ class FilterSubtags(BasePrompt):
 
         groups = text.split("BREAK")
         fixed_tags_set = {
-            
-                cls.normalize_tag(t)
-                for t in re.split(r"BREAK|,", fixed_tags)
-                if t.strip()
-            
+            cls.normalize_tag(t) for t in re.split(r"BREAK|,", fixed_tags) if t.strip()
         }
 
         # 2. filter all subtags from each group
@@ -1039,7 +1031,10 @@ class TextPrompt(BasePrompt):
             "text": ("STRING", {"multiline": True, "dynamicPrompts": False}),
         },
         "optional": {
-            "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "forceInput": True}),
+            "seed": (
+                "INT",
+                {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "forceInput": True},
+            ),
         },
     }
     RETURN_TYPES = ("STRING",)
@@ -1059,6 +1054,7 @@ class TextPrompt(BasePrompt):
             return (expanded,)
 
         import random as _random
+
         rng = _random.Random(seed)
 
         def _resolve(s: str) -> str:
