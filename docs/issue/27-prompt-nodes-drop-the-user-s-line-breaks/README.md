@@ -21,9 +21,11 @@
 ## 해결책
 쉼표로 나눈 원문 조각을 다시 이어 붙이는 일을 `BasePrompt`의 함수 하나에 모은다.
 
-- 남는 조각은 앞뒤 공백까지 원문 그대로 둔다.
+- 함수는 `BasePrompt.join_kept(pieces, kept)`다. 남는 조각은 앞뒤 공백까지 원문 그대로 둔다.
 - 지워지는 조각의 앞 공백에 줄바꿈이 있으면, 다음에 남는 조각이 그 공백을 물려받는다. 그 조각이 이미 줄바꿈으로 시작하면 자기 것을 쓴다.
+- 그룹의 첫 조각이 지워질 때도 같다. 뒤따르는 조각이 그룹의 머리가 되므로 첫 조각의 앞 공백을 물려받는다. 쉼표 뒤에 있던 공백이 `BREAK` 뒤에 남아 공백이 두 칸이 되는 것을 막는다.
 - `drop_tags`(`FilterColors`, `FilterPlurals`), `FilterTags`, `FilterSubtags`가 이 함수로 조각을 잇는다.
+- `drop_tags`는 `FilterTags`처럼 쉼표로만 나눈다. 괄호 깊이를 세는 `split_tags`는 `>:(` 같은 이모티콘 태그 뒤의 쉼표를 나누지 못한다.
 - `BoySubjectFilter`는 `drop_tags`로 `solo`를 지우고, 추가할 태그는 프롬프트의 끝에 붙인다. `drop_tags`가 `BREAK`를 나누므로 `BREAK`를 사이에 둔 태그도 읽는다.
 - `RemoveWeights`는 조각의 알맹이만 바꾸고 앞뒤 공백은 그대로 둔다.
 
@@ -50,15 +52,19 @@ uv pip install --python .venv/bin/python -r requirements.txt -r tests/requiremen
 ```
 
 ## 테스트 결과
-| 테스트 | 수정 전 (`1facead`) |
-|---|---|
-| `test_a_prompt_with_nothing_to_filter_comes_back_as_it_was` | `FilterTags`, `FilterSubtags` 통과. `FilterColors`, `FilterPlurals`, `BoySubjectFilter` 실패 |
-| `test_process_tags_with_nothing_to_filter_comes_back_as_it_was` | 실패 |
-| `test_the_line_break_outlives_the_first_tag_of_its_line` | 4개 모두 실패 |
-| `test_a_tag_dropped_from_the_middle_of_a_line_takes_only_itself` | 실패 |
-| `test_the_last_tag_of_a_prompt_leaves_no_trailing_comma` | 통과 |
-| `test_remove_weights_keeps_the_layout` | 실패 |
-| `test_boy_subject_filter_keeps_the_layout` | 실패 |
-| `test_boy_subject_filter_reads_across_break` | 실패 |
-| 기존 테스트 38개 | 통과 |
-| 합계 | 12 failed, 41 passed |
+| 테스트 | 수정 전 (`1facead`) | 수정 후 |
+|---|---|---|
+| `test_a_prompt_with_nothing_to_filter_comes_back_as_it_was` | `FilterTags`, `FilterSubtags` 통과. `FilterColors`, `FilterPlurals`, `BoySubjectFilter` 실패 | 5개 모두 통과 |
+| `test_process_tags_with_nothing_to_filter_comes_back_as_it_was` | 실패 | 통과 |
+| `test_the_line_break_outlives_the_first_tag_of_its_line` | 4개 모두 실패 | 4개 모두 통과 |
+| `test_a_tag_dropped_from_the_middle_of_a_line_takes_only_itself` | 실패 | 통과 |
+| `test_the_last_tag_of_a_prompt_leaves_no_trailing_comma` | 통과 | 통과 |
+| `test_remove_weights_keeps_the_layout` | 실패 | 통과 |
+| `test_boy_subject_filter_keeps_the_layout` | 실패 | 통과 |
+| `test_boy_subject_filter_reads_across_break` | 실패 | 통과 |
+| 기존 테스트 38개 | 통과 | 통과 |
+| 합계 | 12 failed, 41 passed | 53 passed |
+
+기존 테스트 가운데 `BREAK` 바로 뒤의 태그가 지워지는 세 개(#21, #23, #25)는 구현 도중 한 번 실패했다. 뒤따르는 태그의 앞 공백이 `BREAK` 뒤에 남아 `BREAK  sky`가 되었기 때문이고, 위의 "그룹의 첫 조각" 규칙으로 고쳤다.
+
+`BoySubjectFilter`는 이제 가중치를 떼고 태그를 읽는다. `(sex:1.2)`와 `(solo:1.1)`도 탐지한다.

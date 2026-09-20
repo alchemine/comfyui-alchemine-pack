@@ -2,7 +2,7 @@
 
 "sex" says two people where "1girl, solo" says one. The tag stays and the
 subject tags give way: "solo" goes, and the man is counted in if he is not
-there yet.
+there yet. The node does the rewriting; what is here only reads the tags.
 """
 
 import re
@@ -90,16 +90,15 @@ def _boy_tag(key):
     )
 
 
-def filter_boy_subject(tags, add_tags):
-    """Make the subject tags agree with a tag that needs a man.
+def needs_boy(tags):
+    """True when one of `tags` only holds with a man in the picture."""
+    return any(_boy_tag(_key(t)) for t in tags)
 
-    Nothing happens unless such a tag is there. When it is, "solo" is no
-    longer true and goes; and a prompt that counts no boy gets one, along
-    with `add_tags`.
-    """
-    keys = [_key(t) for t in tags]
-    if not any(_boy_tag(k) for k in keys):
-        return tags
-    if not any(_SUBJECT_RE.fullmatch(k) and "boy" in k for k in keys):
-        tags = tags + ["((1boy))"] + add_tags
-    return [t for t in tags if _key(t) != "solo"]
+
+def counts_boy(tags):
+    """True when one of `tags` is a boy subject: 1boy, 2boys, multiple boys."""
+    return any(_SUBJECT_RE.fullmatch(_key(t)) and "boy" in _key(t) for t in tags)
+
+
+def is_solo(tag):
+    return _key(tag) == "solo"
