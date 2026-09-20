@@ -5,6 +5,7 @@ import base64
 import io
 import os
 import time
+from os import environ
 
 import folder_paths
 import numpy as np
@@ -19,6 +20,7 @@ from .lib.utils import get_logger
 from .lib import joblock
 
 logger = get_logger()
+_session = requests.Session()
 
 # This module's slot in the shared `jobs.lock` (the API nodes use "api").
 _KIND = "grok"
@@ -44,9 +46,9 @@ class _Credentials:
         cls, access_token: str = "", refresh_token: str = "", client_id: str = ""
     ) -> "_Credentials":
         """명시적 입력을 우선 사용하고, 비어 있으면 환경변수로 채운다."""
-        access_token = access_token or os.environ.get("GROK_ACCESS_TOKEN", "")
-        refresh_token = refresh_token or os.environ.get("GROK_REFRESH_TOKEN", "")
-        client_id = client_id or os.environ.get("GROK_CLIENT_ID", "")
+        access_token = access_token or environ.get("GROK_ACCESS_TOKEN", "")
+        refresh_token = refresh_token or environ.get("GROK_REFRESH_TOKEN", "")
+        client_id = client_id or environ.get("GROK_CLIENT_ID", "")
         missing = [
             name
             for name, val in (
@@ -66,7 +68,7 @@ class _Credentials:
 
     def refresh(self) -> str:
         """refresh token으로 새 access token 발급."""
-        r = requests.post(
+        r = _session.post(
             "https://auth.x.ai/oauth2/token",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             data={
@@ -95,10 +97,10 @@ def _api(creds: "_Credentials", method: str, url: str, **kw) -> requests.Respons
     시도한다. 갱신 후에도 403이면 토큰 만료가 아니라 권한/차단 문제다.
     """
     kw.setdefault("headers", {})["Authorization"] = f"Bearer {creds.access_token}"
-    resp = requests.request(method, url, **kw)
+    resp = _session.request(method, url, **kw)
     if resp.status_code in (401, 403):
         kw["headers"]["Authorization"] = f"Bearer {creds.refresh()}"
-        resp = requests.request(method, url, **kw)
+        resp = _session.request(method, url, **kw)
     return resp
 
 
@@ -198,7 +200,7 @@ def _poll_job(creds: "_Credentials", request_id: str) -> "str | None":
 
 def _download(url: str, out_path: str) -> str:
     with open(out_path, "wb") as f:
-        f.write(requests.get(url).content)
+        f.write(_session.get(url).content)
     return out_path
 
 

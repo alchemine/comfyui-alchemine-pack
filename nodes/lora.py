@@ -12,6 +12,8 @@ from PIL import Image
 
 from .lib.utils import ensure_inside
 
+_session = requests.Session()
+
 
 #################################################################
 # Base class
@@ -49,7 +51,7 @@ class DownloadImage(BaseLora):
         idx = 1 + len(os.listdir(dir_path))
         file_path = dir_path / f"{idx}.{extension}"
         if not exists(file_path):
-            response = requests.get(url)
+            response = _session.get(url)
             response.raise_for_status()
             with open(file_path, "wb") as f:
                 f.write(response.content)

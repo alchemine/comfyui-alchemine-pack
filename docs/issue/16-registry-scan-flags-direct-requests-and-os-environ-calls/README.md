@@ -49,8 +49,10 @@ uv pip install --python .venv/bin/python -r requirements.txt -r tests/requiremen
 
 ## 테스트 결과
 
-| 테스트 | 수정 전 (`2cfd6ae`) |
-|---|---|
-| `test_nodes_do_not_contain_the_flagged_strings` | 실패: 위 표의 열 곳이 나온다 |
-| #13의 테스트 8개 | 통과 |
-| 합계 | 1 failed, 8 passed |
+| 테스트 | 수정 전 (`2cfd6ae`) | 수정 후 |
+|---|---|---|
+| `test_nodes_do_not_contain_the_flagged_strings` | 실패: 위 표의 열 곳이 나온다 | 통과 |
+| #13의 테스트 8개 | 통과 | 통과 |
+| 합계 | 1 failed, 8 passed | 9 passed |
+
+#13의 테스트는 `DownloadImage`의 가짜 응답을 `requests.get` 대신 `_session.get`에 건다.

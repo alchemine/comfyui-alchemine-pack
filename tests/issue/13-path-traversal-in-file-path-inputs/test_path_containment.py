@@ -16,7 +16,7 @@ def png_bytes():
 def lora(pack, monkeypatch):
     module = pack("lora")
     response = types.SimpleNamespace(content=png_bytes(), raise_for_status=lambda: None)
-    monkeypatch.setattr(module.requests, "get", lambda url: response)
+    monkeypatch.setattr(module._session, "get", lambda url: response)
     return module
 
 
