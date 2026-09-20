@@ -19,13 +19,16 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 
 | Node | Description |
 |------|-------------|
-| **ProcessTags** | Full pipeline for tag processing. Combines ReplaceUnderscores → FilterTags → FilterSubtags → SDXLAutoBreak in sequence. |
+| **ProcessTags** | Full pipeline for tag processing. Combines ReplaceUnderscores → FilterTags → FilterSubtags → FilterColors → FilterPlurals → SDXLAutoBreak in sequence. |
 | **FilterTags** | Removes blacklisted tags from prompts. Supports wildcards defined in `resources/wildcards.yaml`. |
 | **FilterSubtags** | Removes duplicate/unnecessary subtags (e.g., `dog, white dog` → `white dog`). |
 | **ReplaceUnderscores** | Converts all underscores (`_`) to spaces. |
 | **FixBreakAfterTIPO** | Fixes BREAK token formatting after TIPO output (removes weights like `(BREAK:-1)`). |
 | **SDXLTokenAnalyzer** | Analyzes CLIP tokens in a prompt (SDXL only). Returns g/l tokenizer results with token counts. |
 | **RemoveWeights** | Removes all weight notations from tags (e.g., `(cat:1.2)` → `cat`). |
+| **FilterColors** | Keeps one colour per thing: of `red dress, blue dress`, the first. Colours come from the `color` key of `resources/wildcards.yaml`. |
+| **FilterPlurals** | Of two tags that differ only by a plural `s` (`arm up, arms up`), keeps the first. |
+| **BoySubjectFilter** | When a tag needs a man (`sex`, `hetero`, `penis`, anything spelled with `another`), removes `solo` and, if no boy is counted, adds `((1boy))` and `add_tags`. |
 | **SDXLAutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens (SDXL only). |
 | **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
 | **SeparateLoraTags** | Separates lora tags (`<lora:...>`) from a prompt. If the same lora appears multiple times, the last weight is used. |
@@ -43,6 +46,8 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | `replace_underscores` | BOOLEAN | True | Replace underscores with spaces |
 | `filter_tags` | BOOLEAN | True | Remove blacklisted tags |
 | `filter_subtags` | BOOLEAN | True | Remove duplicate/unnecessary subtags |
+| `filter_colors` | BOOLEAN | True | Keep one colour per thing (FilterColors) |
+| `filter_plurals` | BOOLEAN | True | Keep the first of two tags that differ only by a plural `s` (FilterPlurals) |
 | `auto_break` | BOOLEAN | False | Auto-insert BREAK for 75-token limit |
 | `clip` | CLIP | (optional) | Required for `auto_break` |
 | `blacklist_tags` | STRING | "" | Comma-separated blacklist (supports wildcards) |
@@ -51,7 +56,11 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | Output | Description |
 |--------|-------------|
 | `processed_text` | The processed prompt text |
-| `filtered_tags_list` | List of removed-tag groups (one entry each from the FilterTags / FilterSubtags steps) |
+| `filtered_tags_list` | List of removed-tag groups (one entry each from the FilterTags / FilterSubtags / FilterColors / FilterPlurals steps) |
+
+> ⚠️ **6.0.0:** `filter_colors` and `filter_plurals` sit between `filter_subtags` and `auto_break`. In a workflow saved
+> before 6.0.0 the values of `auto_break`, `blacklist_tags` and `fixed_tags` shift by two widgets; set them again.
+> An API-format workflow needs the two new inputs added.
 
 #### FilterTags
 
@@ -104,6 +113,27 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `text` | STRING | (required) | Input prompt text |
+
+#### FilterColors / FilterPlurals
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+
+| Output | Description |
+|--------|-------------|
+| `processed_text` | Prompt with the repeated tags removed |
+| `filtered_tags` | The removed tags |
+
+#### BoySubjectFilter
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+| `add_tags` | STRING | "(hetero:1.1), (couple:1.1), (deep skin:1.1)" | Tags added after `((1boy))` when no boy is counted |
+
+A prompt without a tag that needs a man is returned unchanged. Tags are matched whole (`sex toy`, `sexy` do not
+match), tags starting with `after ` are skipped, and underscores and case are ignored.
 
 #### SubstituteTags
 

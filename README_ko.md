@@ -19,13 +19,16 @@
 
 | 노드 | 설명 |
 |------|------|
-| **ProcessTags** | 태그 처리 전체 파이프라인. ReplaceUnderscores → FilterTags → FilterSubtags → SDXLAutoBreak 순서로 처리합니다. |
+| **ProcessTags** | 태그 처리 전체 파이프라인. ReplaceUnderscores → FilterTags → FilterSubtags → FilterColors → FilterPlurals → SDXLAutoBreak 순서로 처리합니다. |
 | **FilterTags** | 블랙리스트 태그를 프롬프트에서 제거합니다. `resources/wildcards.yaml`에 정의된 와일드카드를 지원합니다. |
 | **FilterSubtags** | 중복/불필요한 서브태그를 제거합니다 (예: `dog, white dog` → `white dog`). |
 | **ReplaceUnderscores** | 모든 언더스코어(`_`)를 공백으로 변환합니다. |
 | **FixBreakAfterTIPO** | TIPO 출력 후 BREAK 토큰 형식을 수정합니다 (`(BREAK:-1)` 같은 가중치 제거). |
 | **SDXLTokenAnalyzer** | 프롬프트의 CLIP 토큰을 분석합니다 (SDXL 전용). g/l 토크나이저 결과와 토큰 수를 반환합니다. |
 | **RemoveWeights** | 모든 가중치 표기를 제거합니다 (예: `(cat:1.2)` → `cat`). |
+| **FilterColors** | 같은 대상에 색이 여러 개면 처음 것만 남깁니다 (`red dress, blue dress` → `red dress`). 색 목록은 `resources/wildcards.yaml`의 `color` 키입니다. |
+| **FilterPlurals** | 단어 끝의 `s`만 다른 두 태그(`arm up, arms up`)가 있으면 처음 것만 남깁니다. |
+| **BoySubjectFilter** | 남성이 필요한 태그(`sex`, `hetero`, `penis`, `another`가 들어간 태그 등)가 있으면 `solo`를 지우고, 남성 인물 태그가 없으면 `((1boy))`와 `add_tags`를 넣습니다. |
 | **SDXLAutoBreak** | 각 세그먼트가 75토큰 이내가 되도록 자동으로 BREAK를 삽입합니다 (SDXL 전용). |
 | **SubstituteTags** | 정규식 기반 태그 치환. 조건부 실행(`run_if`, `skip_if`) 지원. |
 | **SeparateLoraTags** | 프롬프트에서 lora 태그(`<lora:...>`)를 분리합니다. 동일한 lora가 여러 번 등장하면 마지막 가중치를 사용합니다. |
@@ -43,6 +46,8 @@
 | `replace_underscores` | BOOLEAN | True | 언더스코어를 공백으로 변환 |
 | `filter_tags` | BOOLEAN | True | 블랙리스트 태그 제거 |
 | `filter_subtags` | BOOLEAN | True | 중복/불필요 서브태그 제거 |
+| `filter_colors` | BOOLEAN | True | 같은 대상의 색 중복 제거 (FilterColors) |
+| `filter_plurals` | BOOLEAN | True | 단수형·복수형만 다른 태그 중 나중 것 제거 (FilterPlurals) |
 | `auto_break` | BOOLEAN | False | 75토큰 제한을 위한 자동 BREAK 삽입 |
 | `clip` | CLIP | (선택) | `auto_break` 사용 시 필요 |
 | `blacklist_tags` | STRING | "" | 쉼표로 구분된 블랙리스트 (와일드카드 지원) |
@@ -51,7 +56,11 @@
 | 출력 | 설명 |
 |------|------|
 | `processed_text` | 처리된 프롬프트 텍스트 |
-| `filtered_tags_list` | 제거된 태그 묶음의 리스트 (FilterTags / FilterSubtags 단계에서 각각) |
+| `filtered_tags_list` | 제거된 태그 묶음의 리스트 (FilterTags / FilterSubtags / FilterColors / FilterPlurals 단계에서 각각) |
+
+> ⚠️ **6.0.0:** `filter_colors`와 `filter_plurals`가 `filter_subtags`와 `auto_break` 사이에 들어갔습니다. 6.0.0 이전에
+> 저장한 워크플로에서는 `auto_break`, `blacklist_tags`, `fixed_tags`의 값이 위젯 두 칸만큼 밀리므로 다시 설정해야 합니다.
+> API 형식 워크플로에는 새 입력 두 개를 추가해야 합니다.
 
 #### FilterTags
 
@@ -104,6 +113,27 @@
 | 파라미터 | 타입 | 기본값 | 설명 |
 |----------|------|--------|------|
 | `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+
+#### FilterColors / FilterPlurals
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+
+| 출력 | 설명 |
+|------|------|
+| `processed_text` | 중복된 태그를 지운 프롬프트 |
+| `filtered_tags` | 지워진 태그 |
+
+#### BoySubjectFilter
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+| `add_tags` | STRING | "(hetero:1.1), (couple:1.1), (deep skin:1.1)" | 남성 인물 태그가 없을 때 `((1boy))` 뒤에 넣는 태그 |
+
+남성이 필요한 태그가 없는 프롬프트는 그대로 돌려줍니다. 태그는 전체가 일치해야 하며(`sex toy`, `sexy`는 해당 없음),
+`after `로 시작하는 태그는 건너뛰고, 밑줄과 대소문자는 구분하지 않습니다.
 
 #### SubstituteTags
 

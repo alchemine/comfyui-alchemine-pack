@@ -8,6 +8,7 @@ from functools import wraps
 import yaml
 
 from .lib.utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
+from .lib.tag_boy import needs_boy, counts_boy, is_solo, DEFAULT_ADD_TAGS
 
 
 logger = get_logger()
@@ -122,6 +123,17 @@ class BasePrompt:
     """Base class for Prompt nodes."""
 
     @staticmethod
+    def unwrap(tag: str) -> str:
+        """Take a tag out of its emphasis brackets: ((cat)) -> cat.
+
+        As many closers come off as there are openers. A regex cannot
+        count that: greedy, it leaves one of "((cat))" behind; lazy, it
+        eats the literal "\\)" that ends "(star \\(sky\\))".
+        """
+        depth = min(len(tag) - len(tag.lstrip("([")), len(tag) - len(tag.rstrip(")]")))
+        return tag[depth : len(tag) - depth] if depth else tag
+
+    @staticmethod
     def normalize_tag(tag: str) -> str:
         """Normalize tag with 2 decimal places.
 
@@ -148,15 +160,9 @@ class BasePrompt:
         elif re.match(r"^[^\(\[]", tag):
             # Example: cat
             pass
-        elif match := re.search(r"^(\(+)(.+)(\)+)$", tag):
-            # Example: (cat), ((cat))
-            tag = match.group(2)
-        elif match := re.search(r"^(\[+)(.+)(\]+)$", tag):
-            # Example: [cat], [[cat]]
-            tag = match.group(2)
         else:
-            # logger.warning(f"Unexpected tag format: {tag}")
-            pass
+            # Example: (cat), ((cat)), [cat], [[cat]]
+            tag = BasePrompt.unwrap(tag)
         return tag
 
     @staticmethod
@@ -175,39 +181,90 @@ class BasePrompt:
         elif match := re.search(r"^\(([^()]+):[0-9.-]+:[0-9.-]+\)$", tag):
             # Example: (cat:1.20:1.30)
             tag = match.group(1)
-        elif match := re.search(r"^([\(\[]+)(.+)([\)\]]+)$", tag):
-            # Example: (cat), ((cat)), [cat], [[cat]]
-            tag = match.group(2)
         else:
-            pass
+            # Example: (cat), ((cat)), [cat], [[cat]]
+            tag = BasePrompt.unwrap(tag)
         return tag
 
     @staticmethod
     def split_tags(text: str) -> list[str]:
         """Split tags by comma, preserving commas inside parentheses.
 
+        Only a "(" and a ")" that pair up are emphasis. An escaped one is
+        a literal, and so is one with no partner -- the "(" of ">:(", the
+        ")" of ":)". Counting those as depth would leave it off zero for
+        the rest of the prompt, and no comma after them would split.
+
         Examples:
             Input: "(masterpiece), (best quality:1.2), (highres, absurdres)"
             Output: ["(masterpiece)", " (best quality:1.2)", " (highres, absurdres)"]
+
+            Input: ">:(, (smile:1.2), sky"
+            Output: [">:(", " (smile:1.2)", " sky"]
         """
-        result = []
-        depth = 0
-        current = ""
-        for char in text:
+        openers, spans = [], []
+        for i, char in enumerate(text):
+            if char not in "()" or (i and text[i - 1] == "\\"):
+                continue
             if char == "(":
-                depth += 1
-                current += char
-            elif char == ")":
-                depth -= 1
-                current += char
-            elif char == "," and depth == 0:
-                result.append(current)
-                current = ""
-            else:
-                current += char
-        if current:
-            result.append(current)
+                openers.append(i)
+            elif openers:
+                spans.append((openers.pop(), i))
+
+        result, start = [], 0
+        for i, char in enumerate(text):
+            if char == "," and not any(a < i < b for a, b in spans):
+                result.append(text[start:i])
+                start = i + 1
+        if text[start:]:
+            result.append(text[start:])
         return result
+
+    @staticmethod
+    def join_kept(pieces: list[str], kept) -> str:
+        """Join the comma-split `pieces` whose index is in `kept`.
+
+        A piece carries the whitespace around its tag, so the line break
+        of a line sits at the front of that line's first tag and would
+        leave with it. When such a piece is dropped, the next kept piece
+        takes its leading whitespace over -- unless it starts a line of
+        its own already. The same goes for the first piece: whatever
+        follows it becomes the head and has no comma to stand off from.
+        Kept pieces are otherwise left exactly as typed.
+        """
+        out, carry = [], None
+        for i, piece in enumerate(pieces):
+            lead = piece[: len(piece) - len(piece.lstrip())]
+            if i not in kept:
+                if carry is None and (i == 0 or "\n" in lead):
+                    carry = lead
+                continue
+            if carry is not None and "\n" not in lead:
+                piece = carry + piece.lstrip()
+            carry = None
+            out.append(piece)
+        return ",".join(out)
+
+    @classmethod
+    def drop_tags(cls, text: str, is_dropped) -> tuple[str, str]:
+        """(prompt without the tags `is_dropped` names, those tags).
+
+        `is_dropped` sees every tag once, weight removed, in prompt order
+        -- across BREAK too, since the groups describe one picture. BREAK
+        keeps its place, and what stays keeps its whitespace (join_kept).
+        """
+        parts = re.split(r"(\s*BREAK\s*)", text)
+        dropped = []
+        for i in range(0, len(parts), 2):
+            pieces = parts[i].split(",")
+            kept = set()
+            for idx, piece in enumerate(pieces):
+                if piece.strip() and is_dropped(cls.remove_weight(piece)):
+                    dropped.append(piece.strip())
+                else:
+                    kept.add(idx)
+            parts[i] = cls.join_kept(pieces, kept)
+        return ("".join(parts), ", ".join(dropped))
 
     @classmethod
     def preprocess_tags(cls, text: str, fixed_tags: str) -> tuple[str, str]:
@@ -254,7 +311,8 @@ class BasePrompt:
 class ProcessTags(BasePrompt):
     """Full process of tags from a prompt.
 
-    Order of operations: ReplaceUnderscores -> FilterTags -> FilterSubtags -> AutoBreak
+    Order of operations: ReplaceUnderscores -> FilterTags -> FilterSubtags ->
+    FilterColors -> FilterPlurals -> AutoBreak
     """
 
     INPUT_TYPES = lambda: {
@@ -263,6 +321,8 @@ class ProcessTags(BasePrompt):
             "replace_underscores": ("BOOLEAN", {"default": True}),
             "filter_tags": ("BOOLEAN", {"default": True}),
             "filter_subtags": ("BOOLEAN", {"default": True}),
+            "filter_colors": ("BOOLEAN", {"default": True}),
+            "filter_plurals": ("BOOLEAN", {"default": True}),
             "auto_break": ("BOOLEAN", {"default": False}),
         },
         "optional": {
@@ -284,6 +344,8 @@ class ProcessTags(BasePrompt):
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
+        filter_colors: bool = True,
+        filter_plurals: bool = True,
         auto_break: bool = False,
         clip=None,
         blacklist_tags: str = "",
@@ -318,6 +380,15 @@ class ProcessTags(BasePrompt):
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
 
+        for enabled, node in (
+            (filter_colors, FilterColors),
+            (filter_plurals, FilterPlurals),
+        ):
+            if enabled:
+                text, cur_filtered_tags = node.execute(text=text)
+                if cur_filtered_tags:
+                    filtered_tags_list.append(cur_filtered_tags)
+
         if auto_break and clip is not None:
             text = SDXLAutoBreak.execute(clip=clip, text=text)[0]
             # AutoBreak already formats BREAK correctly, no need to re-join
@@ -338,6 +409,8 @@ class ProcessTags(BasePrompt):
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
+        filter_colors: bool = True,
+        filter_plurals: bool = True,
         auto_break: bool = False,
         clip=None,
         blacklist_tags: str = "",
@@ -348,6 +421,8 @@ class ProcessTags(BasePrompt):
             replace_underscores,
             filter_tags,
             filter_subtags,
+            filter_colors,
+            filter_plurals,
             auto_break,
             clip,
             blacklist_tags,
@@ -422,7 +497,7 @@ class FilterTags(BasePrompt):
                     or (blacklist_tags and not compiled_blacklist.search(tag))
                 ):
                     valid_idxs.append(idx)
-            new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
+            new_group = cls.join_kept(original_tags, valid_idxs)
             new_groups.append(new_group.strip())
             filtered_tag_list.extend(
                 [
@@ -515,7 +590,7 @@ class FilterSubtags(BasePrompt):
                     tag in comp_tags[valid_idx][1] for valid_idx in valid_idxs
                 ):
                     valid_idxs.add(idx)
-            new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
+            new_group = cls.join_kept(original_tags, valid_idxs)
             new_groups.append(new_group.strip())
             filtered_tag_list.extend(
                 [
@@ -748,8 +823,12 @@ class RemoveWeights(BasePrompt):
 
         new_groups = []
         for group in groups:
-            tags = [cls.remove_weight(t) for t in cls.split_tags(group) if t.strip()]
-            new_groups.append(", ".join(tags))
+            # only the tag changes; the whitespace around it stays as typed
+            pieces = [
+                t.replace(t.strip(), cls.remove_weight(t), 1) if t.strip() else t
+                for t in cls.split_tags(group)
+            ]
+            new_groups.append(",".join(pieces))
 
         # Join groups by original BREAK separators (preserve whitespace)
         processed_text = new_groups[0] if new_groups else ""
@@ -764,6 +843,146 @@ class RemoveWeights(BasePrompt):
     @classmethod
     def IS_CHANGED(cls, text: str) -> tuple:
         return (text,)
+
+
+class FilterColors(BasePrompt):
+    """Keep one colour per thing: of "red dress, blue dress", the first.
+
+    A colour is any value under the "color" key of resources/wildcards.yaml,
+    the list FilterTags expands <color> from. What follows the colour names
+    the thing, so "black hair, black dress" are two things and both stay.
+
+    Examples:
+        Input: 1girl, red dress, blue dress, white shirt, black shirt
+        Output: ("1girl, red dress, white shirt", "blue dress, black shirt")
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("processed_text", "filtered_tags")
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(cls, text: str) -> tuple[str, str]:
+        """Keep the first colour of each thing in a prompt."""
+        with open(WILDCARD_PATH) as f:
+            colors = yaml.safe_load(f)["color"]
+        # longest first, so "light blue dress" is not read as a "blue" something
+        colors = sorted(colors, key=len, reverse=True)
+        pattern = re.compile(rf"({'|'.join(map(re.escape, colors))}) (.+)")
+        seen = set()
+
+        def repeated(tag):
+            if not (match := pattern.fullmatch(tag)):
+                return False
+            thing = match.group(2)
+            if thing in seen:
+                return True
+            seen.add(thing)
+            return False
+
+        return cls.drop_tags(text, repeated)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
+
+
+class FilterPlurals(BasePrompt):
+    """Of two tags that differ only by a plural "s", keep the first.
+
+    "arm up, arms up", "hand on hip, hands on hips": one spelling is
+    enough, and the one written first is the one meant. The singular is
+    crude -- a trailing "s" comes off any word of four letters or more --
+    which is all a comparison between two tags of the same prompt needs:
+    "glasses" does not turn into "glass", and "ass" is left alone.
+
+    Examples:
+        Input: 1girl, arm up, arms up, smile
+        Output: ("1girl, arm up, smile", "arms up")
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("processed_text", "filtered_tags")
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(cls, text: str) -> tuple[str, str]:
+        """Keep the first of two tags that differ only by a plural "s"."""
+        first = {}
+
+        def respelled(tag):
+            singular = " ".join(
+                w[:-1] if len(w) > 3 and w.endswith("s") else w for w in tag.split(" ")
+            )
+            # the same tag twice is a duplicate, not a plural
+            return first.setdefault(singular, tag) != tag
+
+        return cls.drop_tags(text, respelled)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
+
+
+class BoySubjectFilter(BasePrompt):
+    """Make the subject tags agree with a tag that needs a man.
+
+    "sex", "hetero", "penis", anything spelled with "another": with one
+    of these in the prompt, "solo" is no longer true and is taken out,
+    and a prompt that counts no boy gets "((1boy))" and add_tags. A
+    prompt without such a tag is left alone.
+
+    Examples:
+        Input: text="1girl, solo, sex, smile", add_tags="hetero"
+        Output: ("1girl, sex, smile, ((1boy)), hetero",)
+
+        Input: text="1girl, 1boy, solo, sex"
+        Output: ("1girl, 1boy, sex",)
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+            "add_tags": ("STRING", {"default": DEFAULT_ADD_TAGS}),
+        },
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("processed_text",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(cls, text: str, add_tags: str = DEFAULT_ADD_TAGS) -> tuple[str]:
+        """Make the subject tags agree with a tag that needs a man."""
+        tags = [cls.remove_weight(t) for t in re.split(r"BREAK|,", text) if t.strip()]
+        if not needs_boy(tags):
+            return (text,)
+        text = cls.drop_tags(text, is_solo)[0]
+        if not counts_boy(tags):
+            text = ", ".join(filter(None, [text, "((1boy))", add_tags.strip()]))
+        return (text,)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str, add_tags: str = DEFAULT_ADD_TAGS) -> tuple:
+        return (text, add_tags)
 
 
 class SDXLAutoBreak(BasePrompt):
@@ -925,7 +1144,8 @@ class SubstituteTags(BasePrompt):
 class SeparateLoraTags(BasePrompt):
     """Separate lora tags from a prompt.
 
-    - text_without_lora: input text with all lora tags removed (whitespace preserved as much as possible)
+    - text_without_lora: input text with all lora tags removed; line breaks stay where they
+      were, and a line of nothing but lora tags goes with them
     - text_with_lora: deduplicated lora tags joined by space; if the same lora appears
       multiple times, the last weight wins; original order is preserved
 
@@ -969,18 +1189,30 @@ class SeparateLoraTags(BasePrompt):
             for name in ordered_names
         )
 
-        # 2. Build text_without_lora using a conditional block rule:
+        # 2. Build text_without_lora line by line. A line break is layout, not
+        #    whitespace around a lora, so the rules below never get to see one.
+        #    Within a line:
         #    - If a lora block is followed by ',', that trailing comma serves as the separator,
         #      so the preceding "[,\s]*" is consumed along with the lora block.
         #    - Otherwise, only the preceding whitespace is consumed so the preceding comma
         #      can serve as the separator. Trailing whitespace after the block is preserved
         #      in both cases to keep the original spacing intact.
-        text_without_lora = re.sub(
-            r"[,\s]*<lora:[^>]+>(?:\s+<lora:[^>]+>)*(?=,)", "", text
-        )
-        text_without_lora = re.sub(
-            r"\s*<lora:[^>]+>(?:\s+<lora:[^>]+>)*", "", text_without_lora
-        )
+        #    A line that opened with a lora opens with what followed it, and a line of
+        #    nothing but loras goes altogether.
+        lines = []
+        for line in text.split("\n"):
+            if not cls.LORA_PATTERN.search(line):
+                lines.append(line)
+                continue
+            rest = re.sub(r"[,\s]*<lora:[^>]+>(?:\s+<lora:[^>]+>)*(?=,)", "", line)
+            rest = re.sub(r"\s*<lora:[^>]+>(?:\s+<lora:[^>]+>)*", "", rest)
+            if not rest.strip(", \t"):
+                continue
+            if line.lstrip().startswith("<lora:"):
+                indent = line[: len(line) - len(line.lstrip())]
+                rest = indent + rest.lstrip(", \t")
+            lines.append(rest)
+        text_without_lora = "\n".join(lines)
         text_without_lora = text_without_lora.strip()
         text_without_lora = re.sub(r"^,\s*", "", text_without_lora)
         text_without_lora = re.sub(r",\s*$", "", text_without_lora)
