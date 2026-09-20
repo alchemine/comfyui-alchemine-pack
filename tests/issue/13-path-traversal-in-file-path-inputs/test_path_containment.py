@@ -80,3 +80,15 @@ def test_load_workflow_filename_cannot_leave_workflows(pack, comfy_dirs):
 
     with pytest.raises(ValueError):
         api.LoadWorkflow().load("../../../secret.txt")
+
+
+def test_symlink_inside_output_cannot_leave_output(lora, comfy_dirs):
+    image = torch.zeros(1, 8, 8, 3)
+    outside = comfy_dirs.root / "escaped_link"
+    outside.mkdir()
+    (comfy_dirs.output / "link").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError):
+        lora.SaveImageWithText.execute(image, "1girl", "link")
+
+    assert list(outside.iterdir()) == []

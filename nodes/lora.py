@@ -10,6 +10,8 @@ import numpy as np
 import folder_paths
 from PIL import Image
 
+from .lib.utils import ensure_inside
+
 
 #################################################################
 # Base class
@@ -40,6 +42,7 @@ class DownloadImage(BaseLora):
     def execute(cls, url: str, dir_path: str) -> tuple:
         output_dir = Path(folder_paths.get_output_directory())
         dir_path = output_dir / dir_path
+        ensure_inside(output_dir, dir_path)
         if not exists(dir_path):
             os.makedirs(dir_path)
 
@@ -82,10 +85,12 @@ class SaveImageWithText(BaseLora):
     def execute(cls, image, text: str, dir_path: str, prefix: str = "") -> tuple[str]:
         output_dir = Path(folder_paths.get_output_directory())
         dir_path = output_dir / dir_path
+        ensure_inside(output_dir, dir_path)
         if not exists(dir_path):
             os.makedirs(dir_path)
 
         if prefix:
+            ensure_inside(output_dir, dir_path / prefix)
             idx = 1 + len(list(dir_path.glob(f"{prefix}_*.*"))) // 2
             prefix_path = dir_path / f"{prefix}_{idx}"
         else:

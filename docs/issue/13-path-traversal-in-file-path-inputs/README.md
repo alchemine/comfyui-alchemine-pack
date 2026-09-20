@@ -27,13 +27,16 @@
 
 ## 해결책
 
-최종 경로가 기준 폴더 안에 있는지 확인하는 함수 하나를 `nodes/lib/utils.py`에
-두고, 세 곳에서 폴더를 만들거나 파일을 열기 전에 호출한다.
+경로가 기준 폴더 안에 있는지 확인하는 `ensure_inside(base, path)`를
+`nodes/lib/utils.py`에 두고, 세 곳에서 폴더를 만들거나 파일을 열기 전에 호출한다.
 
 - `os.path.realpath`로 두 경로를 푼 뒤 `os.path.commonpath`로 비교한다.
   심볼릭 링크로 빠져나가는 경우도 함께 막힌다.
-- 폴더가 아니라 최종 파일 경로를 검사한다. `dir_path`와 `prefix`가 한 번의
-  검사로 막힌다.
+- `DownloadImage`는 `dir_path`를 폴더를 만들기 전에 검사한다.
+- `SaveImageWithText`는 `dir_path`를 폴더를 만들기 전에, `dir_path / prefix`를
+  기존 파일을 세기 전에 검사한다. `prefix`가 `dir_path`를 되돌려 놓는 조합도
+  있어서 둘을 따로 본다.
+- `LoadWorkflow`는 `filename`을 붙인 경로를 파일을 열기 전에 검사한다.
 - 벗어나면 `ValueError`로 실패한다.
 - `folder_paths.is_within_directory`는 쓰지 않는다. 2026-07에 추가된 함수라
   그보다 오래된 ComfyUI에서는 없다.
@@ -53,6 +56,7 @@
 | `test_save_image_with_text_prefix_cannot_leave_output` | `prefix="../../escaped_prefix/p"` | `ValueError`, 밖의 폴더가 비어 있다 |
 | `test_load_workflow_reads_inside_workflows` | `filename="sub/wf.json"` | 파일 내용을 돌려준다 |
 | `test_load_workflow_filename_cannot_leave_workflows` | `filename="../../../secret.txt"` | `ValueError` |
+| `test_symlink_inside_output_cannot_leave_output` | `dir_path="link"`, `link`는 출력 폴더 밖을 가리키는 심볼릭 링크 | `ValueError`, 링크가 가리키는 폴더가 비어 있다 |
 
 실행 방법:
 
@@ -64,13 +68,14 @@ uv pip install --python .venv/bin/python -r requirements.txt -r tests/requiremen
 
 ## 테스트 결과
 
-| 테스트 | 수정 전 (`cb1f9fe`) |
-|---|---|
-| `test_download_image_writes_inside_output` | 통과 |
-| `test_download_image_dir_path_cannot_leave_output` | 실패: `ValueError`가 나지 않는다 |
-| `test_save_image_with_text_writes_inside_output` | 통과 |
-| `test_save_image_with_text_dir_path_cannot_leave_output` | 실패: `ValueError`가 나지 않는다 |
-| `test_save_image_with_text_prefix_cannot_leave_output` | 실패: `ValueError`가 나지 않는다 |
-| `test_load_workflow_reads_inside_workflows` | 통과 |
-| `test_load_workflow_filename_cannot_leave_workflows` | 실패: `ValueError`가 나지 않는다 |
-| 합계 | 4 failed, 3 passed |
+| 테스트 | 수정 전 (`cb1f9fe`) | 수정 후 |
+|---|---|---|
+| `test_download_image_writes_inside_output` | 통과 | 통과 |
+| `test_download_image_dir_path_cannot_leave_output` | 실패: `ValueError`가 나지 않는다 | 통과 |
+| `test_save_image_with_text_writes_inside_output` | 통과 | 통과 |
+| `test_save_image_with_text_dir_path_cannot_leave_output` | 실패: `ValueError`가 나지 않는다 | 통과 |
+| `test_save_image_with_text_prefix_cannot_leave_output` | 실패: `ValueError`가 나지 않는다 | 통과 |
+| `test_load_workflow_reads_inside_workflows` | 통과 | 통과 |
+| `test_load_workflow_filename_cannot_leave_workflows` | 실패: `ValueError`가 나지 않는다 | 통과 |
+| `test_symlink_inside_output_cannot_leave_output` | 실패: `ValueError`가 나지 않는다 | 통과 |
+| 합계 | 5 failed, 3 passed | 8 passed |
