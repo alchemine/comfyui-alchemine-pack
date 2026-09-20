@@ -1,5 +1,6 @@
 """Utility module for nodes."""
 
+import os
 import re
 import asyncio
 import logging
@@ -257,6 +258,16 @@ class AnyType(str):
 
 
 any_typ = AnyType("*")
+
+
+def ensure_inside(base, path) -> None:
+    """Raise if `path` resolves outside `base`.
+
+    realpath on both, so neither ".." nor a symlink inside `base` gets out.
+    """
+    base = os.path.realpath(base)
+    if os.path.commonpath([base, os.path.realpath(path)]) != base:
+        raise ValueError(f"'{path}' is outside '{base}'")
 
 
 #################################################################

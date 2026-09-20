@@ -5,8 +5,8 @@ A single `OpenAIInference` node covers every OpenAI-compatible backend
 etc.) — just point `base_url`/`api_key`/`model` at the desired server.
 """
 
-import os
 import re
+from os import environ
 from io import BytesIO
 from base64 import b64encode
 
@@ -19,6 +19,7 @@ from .lib.utils import get_logger
 
 
 logger = get_logger()
+_session = requests.Session()
 
 
 CACHE_MAX_SIZE = 10
@@ -163,8 +164,8 @@ class OpenAIInference(BaseInference):
         think: bool = False,
     ) -> tuple[str, str]:
         # Resolve config: node inputs take priority, then fall back to `.env`.
-        base_url = base_url or os.environ.get("OPENAI_BASE_URL", "")
-        api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        base_url = base_url or environ.get("OPENAI_BASE_URL", "")
+        api_key = api_key or environ.get("OPENAI_API_KEY", "")
         if not base_url:
             raise ValueError(
                 "base_url is not set. Provide it on the node or set "
@@ -219,7 +220,7 @@ class OpenAIInference(BaseInference):
             "temperature": temperature,
             "chat_template_kwargs": {"enable_thinking": think},
         }
-        response = requests.post(
+        response = _session.post(
             f"{base_url.rstrip('/')}/chat/completions",
             headers=headers,
             json=payload,
@@ -259,7 +260,7 @@ class OpenAIInference(BaseInference):
         If only one model is available, use it.
         Otherwise, raise an error with available models.
         """
-        response = requests.get(
+        response = _session.get(
             f"{base_url.rstrip('/')}/models",
             headers=headers,
             timeout=(CONNECT_TIMEOUT, 30),
