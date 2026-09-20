@@ -19,7 +19,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 
 | Node | Description |
 |------|-------------|
-| **ProcessTags** | Full pipeline for tag processing. Combines ReplaceUnderscores → FilterTags → FilterSubtags → SDXLAutoBreak in sequence. |
+| **ProcessTags** | Full pipeline for tag processing. Combines ReplaceUnderscores → FilterTags → FilterSubtags → FilterColors → FilterPlurals → SDXLAutoBreak in sequence. |
 | **FilterTags** | Removes blacklisted tags from prompts. Supports wildcards defined in `resources/wildcards.yaml`. |
 | **FilterSubtags** | Removes duplicate/unnecessary subtags (e.g., `dog, white dog` → `white dog`). |
 | **ReplaceUnderscores** | Converts all underscores (`_`) to spaces. |
@@ -46,6 +46,8 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | `replace_underscores` | BOOLEAN | True | Replace underscores with spaces |
 | `filter_tags` | BOOLEAN | True | Remove blacklisted tags |
 | `filter_subtags` | BOOLEAN | True | Remove duplicate/unnecessary subtags |
+| `filter_colors` | BOOLEAN | True | Keep one colour per thing (FilterColors) |
+| `filter_plurals` | BOOLEAN | True | Keep the first of two tags that differ only by a plural `s` (FilterPlurals) |
 | `auto_break` | BOOLEAN | False | Auto-insert BREAK for 75-token limit |
 | `clip` | CLIP | (optional) | Required for `auto_break` |
 | `blacklist_tags` | STRING | "" | Comma-separated blacklist (supports wildcards) |
@@ -54,7 +56,11 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | Output | Description |
 |--------|-------------|
 | `processed_text` | The processed prompt text |
-| `filtered_tags_list` | List of removed-tag groups (one entry each from the FilterTags / FilterSubtags steps) |
+| `filtered_tags_list` | List of removed-tag groups (one entry each from the FilterTags / FilterSubtags / FilterColors / FilterPlurals steps) |
+
+> ⚠️ **6.0.0:** `filter_colors` and `filter_plurals` sit between `filter_subtags` and `auto_break`. In a workflow saved
+> before 6.0.0 the values of `auto_break`, `blacklist_tags` and `fixed_tags` shift by two widgets; set them again.
+> An API-format workflow needs the two new inputs added.
 
 #### FilterTags
 

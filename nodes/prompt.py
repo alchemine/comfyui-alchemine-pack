@@ -275,7 +275,8 @@ class BasePrompt:
 class ProcessTags(BasePrompt):
     """Full process of tags from a prompt.
 
-    Order of operations: ReplaceUnderscores -> FilterTags -> FilterSubtags -> AutoBreak
+    Order of operations: ReplaceUnderscores -> FilterTags -> FilterSubtags ->
+    FilterColors -> FilterPlurals -> AutoBreak
     """
 
     INPUT_TYPES = lambda: {
@@ -284,6 +285,8 @@ class ProcessTags(BasePrompt):
             "replace_underscores": ("BOOLEAN", {"default": True}),
             "filter_tags": ("BOOLEAN", {"default": True}),
             "filter_subtags": ("BOOLEAN", {"default": True}),
+            "filter_colors": ("BOOLEAN", {"default": True}),
+            "filter_plurals": ("BOOLEAN", {"default": True}),
             "auto_break": ("BOOLEAN", {"default": False}),
         },
         "optional": {
@@ -305,6 +308,8 @@ class ProcessTags(BasePrompt):
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
+        filter_colors: bool = True,
+        filter_plurals: bool = True,
         auto_break: bool = False,
         clip=None,
         blacklist_tags: str = "",
@@ -339,6 +344,15 @@ class ProcessTags(BasePrompt):
             if cur_filtered_tags:
                 filtered_tags_list.append(cur_filtered_tags)
 
+        for enabled, node in (
+            (filter_colors, FilterColors),
+            (filter_plurals, FilterPlurals),
+        ):
+            if enabled:
+                text, cur_filtered_tags = node.execute(text=text)
+                if cur_filtered_tags:
+                    filtered_tags_list.append(cur_filtered_tags)
+
         if auto_break and clip is not None:
             text = SDXLAutoBreak.execute(clip=clip, text=text)[0]
             # AutoBreak already formats BREAK correctly, no need to re-join
@@ -359,6 +373,8 @@ class ProcessTags(BasePrompt):
         replace_underscores: bool = True,
         filter_tags: bool = True,
         filter_subtags: bool = True,
+        filter_colors: bool = True,
+        filter_plurals: bool = True,
         auto_break: bool = False,
         clip=None,
         blacklist_tags: str = "",
@@ -369,6 +385,8 @@ class ProcessTags(BasePrompt):
             replace_underscores,
             filter_tags,
             filter_subtags,
+            filter_colors,
+            filter_plurals,
             auto_break,
             clip,
             blacklist_tags,
