@@ -1144,7 +1144,8 @@ class SubstituteTags(BasePrompt):
 class SeparateLoraTags(BasePrompt):
     """Separate lora tags from a prompt.
 
-    - text_without_lora: input text with all lora tags removed (whitespace preserved as much as possible)
+    - text_without_lora: input text with all lora tags removed; line breaks stay where they
+      were, and a line of nothing but lora tags goes with them
     - text_with_lora: deduplicated lora tags joined by space; if the same lora appears
       multiple times, the last weight wins; original order is preserved
 
@@ -1188,18 +1189,30 @@ class SeparateLoraTags(BasePrompt):
             for name in ordered_names
         )
 
-        # 2. Build text_without_lora using a conditional block rule:
+        # 2. Build text_without_lora line by line. A line break is layout, not
+        #    whitespace around a lora, so the rules below never get to see one.
+        #    Within a line:
         #    - If a lora block is followed by ',', that trailing comma serves as the separator,
         #      so the preceding "[,\s]*" is consumed along with the lora block.
         #    - Otherwise, only the preceding whitespace is consumed so the preceding comma
         #      can serve as the separator. Trailing whitespace after the block is preserved
         #      in both cases to keep the original spacing intact.
-        text_without_lora = re.sub(
-            r"[,\s]*<lora:[^>]+>(?:\s+<lora:[^>]+>)*(?=,)", "", text
-        )
-        text_without_lora = re.sub(
-            r"\s*<lora:[^>]+>(?:\s+<lora:[^>]+>)*", "", text_without_lora
-        )
+        #    A line that opened with a lora opens with what followed it, and a line of
+        #    nothing but loras goes altogether.
+        lines = []
+        for line in text.split("\n"):
+            if not cls.LORA_PATTERN.search(line):
+                lines.append(line)
+                continue
+            rest = re.sub(r"[,\s]*<lora:[^>]+>(?:\s+<lora:[^>]+>)*(?=,)", "", line)
+            rest = re.sub(r"\s*<lora:[^>]+>(?:\s+<lora:[^>]+>)*", "", rest)
+            if not rest.strip(", \t"):
+                continue
+            if line.lstrip().startswith("<lora:"):
+                indent = line[: len(line) - len(line.lstrip())]
+                rest = indent + rest.lstrip(", \t")
+            lines.append(rest)
+        text_without_lora = "\n".join(lines)
         text_without_lora = text_without_lora.strip()
         text_without_lora = re.sub(r"^,\s*", "", text_without_lora)
         text_without_lora = re.sub(r",\s*$", "", text_without_lora)
