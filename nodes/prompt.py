@@ -8,7 +8,7 @@ from functools import wraps
 import yaml
 
 from .lib.utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
-from .lib.tag_boy import filter_boy_subject, DEFAULT_ADD_TAGS
+from .lib.tag_boy import needs_boy, counts_boy, is_solo, DEFAULT_ADD_TAGS
 
 
 logger = get_logger()
@@ -210,24 +210,50 @@ class BasePrompt:
             result.append(current)
         return result
 
+    @staticmethod
+    def join_kept(pieces: list[str], kept) -> str:
+        """Join the comma-split `pieces` whose index is in `kept`.
+
+        A piece carries the whitespace around its tag, so the line break
+        of a line sits at the front of that line's first tag and would
+        leave with it. When such a piece is dropped, the next kept piece
+        takes its leading whitespace over -- unless it starts a line of
+        its own already. The same goes for the first piece: whatever
+        follows it becomes the head and has no comma to stand off from.
+        Kept pieces are otherwise left exactly as typed.
+        """
+        out, carry = [], None
+        for i, piece in enumerate(pieces):
+            lead = piece[: len(piece) - len(piece.lstrip())]
+            if i not in kept:
+                if carry is None and (i == 0 or "\n" in lead):
+                    carry = lead
+                continue
+            if carry is not None and "\n" not in lead:
+                piece = carry + piece.lstrip()
+            carry = None
+            out.append(piece)
+        return ",".join(out)
+
     @classmethod
     def drop_tags(cls, text: str, is_dropped) -> tuple[str, str]:
         """(prompt without the tags `is_dropped` names, those tags).
 
         `is_dropped` sees every tag once, weight removed, in prompt order
         -- across BREAK too, since the groups describe one picture. BREAK
-        keeps its place and the whitespace around it.
+        keeps its place, and what stays keeps its whitespace (join_kept).
         """
         parts = re.split(r"(\s*BREAK\s*)", text)
         dropped = []
         for i in range(0, len(parts), 2):
-            kept = []
-            for tag in (t.strip() for t in cls.split_tags(parts[i])):
-                if tag:
-                    (dropped if is_dropped(cls.remove_weight(tag)) else kept).append(
-                        tag
-                    )
-            parts[i] = ", ".join(kept)
+            pieces = parts[i].split(",")
+            kept = set()
+            for idx, piece in enumerate(pieces):
+                if piece.strip() and is_dropped(cls.remove_weight(piece)):
+                    dropped.append(piece.strip())
+                else:
+                    kept.add(idx)
+            parts[i] = cls.join_kept(pieces, kept)
         return ("".join(parts), ", ".join(dropped))
 
     @classmethod
@@ -461,7 +487,7 @@ class FilterTags(BasePrompt):
                     or (blacklist_tags and not compiled_blacklist.search(tag))
                 ):
                     valid_idxs.append(idx)
-            new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
+            new_group = cls.join_kept(original_tags, valid_idxs)
             new_groups.append(new_group.strip())
             filtered_tag_list.extend(
                 [
@@ -554,7 +580,7 @@ class FilterSubtags(BasePrompt):
                     tag in comp_tags[valid_idx][1] for valid_idx in valid_idxs
                 ):
                     valid_idxs.add(idx)
-            new_group = ",".join([original_tags[idx] for idx in sorted(valid_idxs)])
+            new_group = cls.join_kept(original_tags, valid_idxs)
             new_groups.append(new_group.strip())
             filtered_tag_list.extend(
                 [
@@ -787,8 +813,12 @@ class RemoveWeights(BasePrompt):
 
         new_groups = []
         for group in groups:
-            tags = [cls.remove_weight(t) for t in cls.split_tags(group) if t.strip()]
-            new_groups.append(", ".join(tags))
+            # only the tag changes; the whitespace around it stays as typed
+            pieces = [
+                t.replace(t.strip(), cls.remove_weight(t), 1) if t.strip() else t
+                for t in cls.split_tags(group)
+            ]
+            new_groups.append(",".join(pieces))
 
         # Join groups by original BREAK separators (preserve whitespace)
         processed_text = new_groups[0] if new_groups else ""
@@ -932,8 +962,13 @@ class BoySubjectFilter(BasePrompt):
     @log_prompt
     def execute(cls, text: str, add_tags: str = DEFAULT_ADD_TAGS) -> tuple[str]:
         """Make the subject tags agree with a tag that needs a man."""
-        split = lambda s: [t.strip() for t in cls.split_tags(s) if t.strip()]
-        return (", ".join(filter_boy_subject(split(text), split(add_tags))),)
+        tags = [cls.remove_weight(t) for t in re.split(r"BREAK|,", text) if t.strip()]
+        if not needs_boy(tags):
+            return (text,)
+        text = cls.drop_tags(text, is_solo)[0]
+        if not counts_boy(tags):
+            text = ", ".join(filter(None, [text, "((1boy))", add_tags.strip()]))
+        return (text,)
 
     @classmethod
     def IS_CHANGED(cls, text: str, add_tags: str = DEFAULT_ADD_TAGS) -> tuple:
