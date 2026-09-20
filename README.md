@@ -26,6 +26,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **FixBreakAfterTIPO** | Fixes BREAK token formatting after TIPO output (removes weights like `(BREAK:-1)`). |
 | **SDXLTokenAnalyzer** | Analyzes CLIP tokens in a prompt (SDXL only). Returns g/l tokenizer results with token counts. |
 | **RemoveWeights** | Removes all weight notations from tags (e.g., `(cat:1.2)` → `cat`). |
+| **BoySubjectFilter** | When a tag needs a man (`sex`, `hetero`, `penis`, anything spelled with `another`), removes `solo` and, if no boy is counted, adds `((1boy))` and `add_tags`. |
 | **SDXLAutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens (SDXL only). |
 | **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
 | **SeparateLoraTags** | Separates lora tags (`<lora:...>`) from a prompt. If the same lora appears multiple times, the last weight is used. |
@@ -104,6 +105,16 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `text` | STRING | (required) | Input prompt text |
+
+#### BoySubjectFilter
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+| `add_tags` | STRING | "(hetero:1.1), (couple:1.1), (deep skin:1.1)" | Tags added after `((1boy))` when no boy is counted |
+
+A prompt without a tag that needs a man is returned unchanged. Tags are matched whole (`sex toy`, `sexy` do not
+match), tags starting with `after ` are skipped, and underscores and case are ignored.
 
 #### SubstituteTags
 
