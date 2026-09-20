@@ -26,6 +26,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | **FixBreakAfterTIPO** | Fixes BREAK token formatting after TIPO output (removes weights like `(BREAK:-1)`). |
 | **SDXLTokenAnalyzer** | Analyzes CLIP tokens in a prompt (SDXL only). Returns g/l tokenizer results with token counts. |
 | **RemoveWeights** | Removes all weight notations from tags (e.g., `(cat:1.2)` → `cat`). |
+| **FilterColors** | Keeps one colour per thing: of `red dress, blue dress`, the first. Colours come from the `color` key of `resources/wildcards.yaml`. |
 | **BoySubjectFilter** | When a tag needs a man (`sex`, `hetero`, `penis`, anything spelled with `another`), removes `solo` and, if no boy is counted, adds `((1boy))` and `add_tags`. |
 | **SDXLAutoBreak** | Automatically inserts BREAK to keep each segment within 75 tokens (SDXL only). |
 | **SubstituteTags** | Regex-based tag substitution with conditional execution (`run_if`, `skip_if`). |
@@ -105,6 +106,17 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `text` | STRING | (required) | Input prompt text |
+
+#### FilterColors
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | STRING | (required) | Input prompt text |
+
+| Output | Description |
+|--------|-------------|
+| `processed_text` | Prompt with the repeated colours removed |
+| `filtered_tags` | The removed tags |
 
 #### BoySubjectFilter
 

@@ -211,6 +211,26 @@ class BasePrompt:
         return result
 
     @classmethod
+    def drop_tags(cls, text: str, is_dropped) -> tuple[str, str]:
+        """(prompt without the tags `is_dropped` names, those tags).
+
+        `is_dropped` sees every tag once, weight removed, in prompt order
+        -- across BREAK too, since the groups describe one picture. BREAK
+        keeps its place and the whitespace around it.
+        """
+        parts = re.split(r"(\s*BREAK\s*)", text)
+        dropped = []
+        for i in range(0, len(parts), 2):
+            kept = []
+            for tag in (t.strip() for t in cls.split_tags(parts[i])):
+                if tag:
+                    (dropped if is_dropped(cls.remove_weight(tag)) else kept).append(
+                        tag
+                    )
+            parts[i] = ", ".join(kept)
+        return ("".join(parts), ", ".join(dropped))
+
+    @classmethod
     def preprocess_tags(cls, text: str, fixed_tags: str) -> tuple[str, str]:
         """Adjust fixed tags to be in the same order as tags in the text."""
         # 1. Adjust BREAK
@@ -761,6 +781,56 @@ class RemoveWeights(BasePrompt):
         processed_text = re.sub(r",(\s*BREAK)", r"\1", processed_text)
 
         return (processed_text,)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
+
+
+class FilterColors(BasePrompt):
+    """Keep one colour per thing: of "red dress, blue dress", the first.
+
+    A colour is any value under the "color" key of resources/wildcards.yaml,
+    the list FilterTags expands <color> from. What follows the colour names
+    the thing, so "black hair, black dress" are two things and both stay.
+
+    Examples:
+        Input: 1girl, red dress, blue dress, white shirt, black shirt
+        Output: ("1girl, red dress, white shirt", "blue dress, black shirt")
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("processed_text", "filtered_tags")
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(cls, text: str) -> tuple[str, str]:
+        """Keep the first colour of each thing in a prompt."""
+        with open(WILDCARD_PATH) as f:
+            colors = yaml.safe_load(f)["color"]
+        # longest first, so "light blue dress" is not read as a "blue" something
+        colors = sorted(colors, key=len, reverse=True)
+        pattern = re.compile(rf"({'|'.join(map(re.escape, colors))}) (.+)")
+        seen = set()
+
+        def repeated(tag):
+            if not (match := pattern.fullmatch(tag)):
+                return False
+            thing = match.group(2)
+            if thing in seen:
+                return True
+            seen.add(thing)
+            return False
+
+        return cls.drop_tags(text, repeated)
 
     @classmethod
     def IS_CHANGED(cls, text: str) -> tuple:
