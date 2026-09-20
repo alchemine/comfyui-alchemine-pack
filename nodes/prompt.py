@@ -123,6 +123,17 @@ class BasePrompt:
     """Base class for Prompt nodes."""
 
     @staticmethod
+    def unwrap(tag: str) -> str:
+        """Take a tag out of its emphasis brackets: ((cat)) -> cat.
+
+        As many closers come off as there are openers. A regex cannot
+        count that: greedy, it leaves one of "((cat))" behind; lazy, it
+        eats the literal "\\)" that ends "(star \\(sky\\))".
+        """
+        depth = min(len(tag) - len(tag.lstrip("([")), len(tag) - len(tag.rstrip(")]")))
+        return tag[depth : len(tag) - depth] if depth else tag
+
+    @staticmethod
     def normalize_tag(tag: str) -> str:
         """Normalize tag with 2 decimal places.
 
@@ -149,15 +160,9 @@ class BasePrompt:
         elif re.match(r"^[^\(\[]", tag):
             # Example: cat
             pass
-        elif match := re.search(r"^(\(+)(.+)(\)+)$", tag):
-            # Example: (cat), ((cat))
-            tag = match.group(2)
-        elif match := re.search(r"^(\[+)(.+)(\]+)$", tag):
-            # Example: [cat], [[cat]]
-            tag = match.group(2)
         else:
-            # logger.warning(f"Unexpected tag format: {tag}")
-            pass
+            # Example: (cat), ((cat)), [cat], [[cat]]
+            tag = BasePrompt.unwrap(tag)
         return tag
 
     @staticmethod
@@ -176,11 +181,9 @@ class BasePrompt:
         elif match := re.search(r"^\(([^()]+):[0-9.-]+:[0-9.-]+\)$", tag):
             # Example: (cat:1.20:1.30)
             tag = match.group(1)
-        elif match := re.search(r"^([\(\[]+)(.+)([\)\]]+)$", tag):
-            # Example: (cat), ((cat)), [cat], [[cat]]
-            tag = match.group(2)
         else:
-            pass
+            # Example: (cat), ((cat)), [cat], [[cat]]
+            tag = BasePrompt.unwrap(tag)
         return tag
 
     @staticmethod
