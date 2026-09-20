@@ -5,7 +5,8 @@ __pycache__/
 .env
 
 playground/
-docs/
+docs/*
+!docs/issue/
 resources/*
 !resources/wildcards.yaml
 jobs.lock
