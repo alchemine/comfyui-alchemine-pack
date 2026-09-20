@@ -19,7 +19,7 @@
 
 | 노드 | 설명 |
 |------|------|
-| **ProcessTags** | 태그 처리 전체 파이프라인. ReplaceUnderscores → FilterTags → FilterSubtags → SDXLAutoBreak 순서로 처리합니다. |
+| **ProcessTags** | 태그 처리 전체 파이프라인. ReplaceUnderscores → FilterTags → FilterSubtags → FilterColors → FilterPlurals → SDXLAutoBreak 순서로 처리합니다. |
 | **FilterTags** | 블랙리스트 태그를 프롬프트에서 제거합니다. `resources/wildcards.yaml`에 정의된 와일드카드를 지원합니다. |
 | **FilterSubtags** | 중복/불필요한 서브태그를 제거합니다 (예: `dog, white dog` → `white dog`). |
 | **ReplaceUnderscores** | 모든 언더스코어(`_`)를 공백으로 변환합니다. |
@@ -46,6 +46,8 @@
 | `replace_underscores` | BOOLEAN | True | 언더스코어를 공백으로 변환 |
 | `filter_tags` | BOOLEAN | True | 블랙리스트 태그 제거 |
 | `filter_subtags` | BOOLEAN | True | 중복/불필요 서브태그 제거 |
+| `filter_colors` | BOOLEAN | True | 같은 대상의 색 중복 제거 (FilterColors) |
+| `filter_plurals` | BOOLEAN | True | 단수형·복수형만 다른 태그 중 나중 것 제거 (FilterPlurals) |
 | `auto_break` | BOOLEAN | False | 75토큰 제한을 위한 자동 BREAK 삽입 |
 | `clip` | CLIP | (선택) | `auto_break` 사용 시 필요 |
 | `blacklist_tags` | STRING | "" | 쉼표로 구분된 블랙리스트 (와일드카드 지원) |
@@ -54,7 +56,11 @@
 | 출력 | 설명 |
 |------|------|
 | `processed_text` | 처리된 프롬프트 텍스트 |
-| `filtered_tags_list` | 제거된 태그 묶음의 리스트 (FilterTags / FilterSubtags 단계에서 각각) |
+| `filtered_tags_list` | 제거된 태그 묶음의 리스트 (FilterTags / FilterSubtags / FilterColors / FilterPlurals 단계에서 각각) |
+
+> ⚠️ **6.0.0:** `filter_colors`와 `filter_plurals`가 `filter_subtags`와 `auto_break` 사이에 들어갔습니다. 6.0.0 이전에
+> 저장한 워크플로에서는 `auto_break`, `blacklist_tags`, `fixed_tags`의 값이 위젯 두 칸만큼 밀리므로 다시 설정해야 합니다.
+> API 형식 워크플로에는 새 입력 두 개를 추가해야 합니다.
 
 #### FilterTags
 
