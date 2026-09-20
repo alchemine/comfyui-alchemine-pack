@@ -29,9 +29,9 @@ uv pip install --python .venv/bin/python -r requirements.txt -r tests/requiremen
 ```
 
 ## 테스트 결과
-| 테스트 | 수정 전 (`647b6fc`) |
-|---|---|
-| `test_the_archive_carries_no_docs_or_tests` | 실패: zip의 파일 55개 가운데 `docs/` 11개, `tests/` 13개 |
-| `test_the_archive_still_carries_the_pack` | 통과 |
-| 기존 테스트 90개 | 통과 |
-| 합계 | 1 failed, 91 passed |
+| 테스트 | 수정 전 (`647b6fc`) | 수정 후 |
+|---|---|---|
+| `test_the_archive_carries_no_docs_or_tests` | 실패: zip의 파일 55개 가운데 `docs/` 11개, `tests/` 13개 | 통과: zip의 파일 31개, `docs/`와 `tests/`는 0개 |
+| `test_the_archive_still_carries_the_pack` | 통과 | 통과 |
+| 기존 테스트 90개 | 통과 | 통과 |
+| 합계 | 1 failed, 91 passed | 92 passed |
