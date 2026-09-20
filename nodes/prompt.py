@@ -190,27 +190,34 @@ class BasePrompt:
     def split_tags(text: str) -> list[str]:
         """Split tags by comma, preserving commas inside parentheses.
 
+        Only a "(" and a ")" that pair up are emphasis. An escaped one is
+        a literal, and so is one with no partner -- the "(" of ">:(", the
+        ")" of ":)". Counting those as depth would leave it off zero for
+        the rest of the prompt, and no comma after them would split.
+
         Examples:
             Input: "(masterpiece), (best quality:1.2), (highres, absurdres)"
             Output: ["(masterpiece)", " (best quality:1.2)", " (highres, absurdres)"]
+
+            Input: ">:(, (smile:1.2), sky"
+            Output: [">:(", " (smile:1.2)", " sky"]
         """
-        result = []
-        depth = 0
-        current = ""
-        for char in text:
+        openers, spans = [], []
+        for i, char in enumerate(text):
+            if char not in "()" or (i and text[i - 1] == "\\"):
+                continue
             if char == "(":
-                depth += 1
-                current += char
-            elif char == ")":
-                depth -= 1
-                current += char
-            elif char == "," and depth == 0:
-                result.append(current)
-                current = ""
-            else:
-                current += char
-        if current:
-            result.append(current)
+                openers.append(i)
+            elif openers:
+                spans.append((openers.pop(), i))
+
+        result, start = [], 0
+        for i, char in enumerate(text):
+            if char == "," and not any(a < i < b for a, b in spans):
+                result.append(text[start:i])
+                start = i + 1
+        if text[start:]:
+            result.append(text[start:])
         return result
 
     @staticmethod
