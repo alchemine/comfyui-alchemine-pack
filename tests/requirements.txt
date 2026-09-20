@@ -6,3 +6,4 @@ torch
 numpy
 pillow
 requests
+pyyaml

@@ -8,6 +8,7 @@ from functools import wraps
 import yaml
 
 from .lib.utils import WILDCARD_PATH, get_logger, exception_handler, standardize_prompt
+from .lib.tag_boy import filter_boy_subject, DEFAULT_ADD_TAGS
 
 
 logger = get_logger()
@@ -764,6 +765,46 @@ class RemoveWeights(BasePrompt):
     @classmethod
     def IS_CHANGED(cls, text: str) -> tuple:
         return (text,)
+
+
+class BoySubjectFilter(BasePrompt):
+    """Make the subject tags agree with a tag that needs a man.
+
+    "sex", "hetero", "penis", anything spelled with "another": with one
+    of these in the prompt, "solo" is no longer true and is taken out,
+    and a prompt that counts no boy gets "((1boy))" and add_tags. A
+    prompt without such a tag is left alone.
+
+    Examples:
+        Input: text="1girl, solo, sex, smile", add_tags="hetero"
+        Output: ("1girl, sex, smile, ((1boy)), hetero",)
+
+        Input: text="1girl, 1boy, solo, sex"
+        Output: ("1girl, 1boy, sex",)
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+            "add_tags": ("STRING", {"default": DEFAULT_ADD_TAGS}),
+        },
+    }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("processed_text",)
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(cls, text: str, add_tags: str = DEFAULT_ADD_TAGS) -> tuple[str]:
+        """Make the subject tags agree with a tag that needs a man."""
+        split = lambda s: [t.strip() for t in cls.split_tags(s) if t.strip()]
+        return (", ".join(filter_boy_subject(split(text), split(add_tags))),)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str, add_tags: str = DEFAULT_ADD_TAGS) -> tuple:
+        return (text, add_tags)
 
 
 class SDXLAutoBreak(BasePrompt):

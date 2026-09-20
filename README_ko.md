@@ -26,6 +26,7 @@
 | **FixBreakAfterTIPO** | TIPO 출력 후 BREAK 토큰 형식을 수정합니다 (`(BREAK:-1)` 같은 가중치 제거). |
 | **SDXLTokenAnalyzer** | 프롬프트의 CLIP 토큰을 분석합니다 (SDXL 전용). g/l 토크나이저 결과와 토큰 수를 반환합니다. |
 | **RemoveWeights** | 모든 가중치 표기를 제거합니다 (예: `(cat:1.2)` → `cat`). |
+| **BoySubjectFilter** | 남성이 필요한 태그(`sex`, `hetero`, `penis`, `another`가 들어간 태그 등)가 있으면 `solo`를 지우고, 남성 인물 태그가 없으면 `((1boy))`와 `add_tags`를 넣습니다. |
 | **SDXLAutoBreak** | 각 세그먼트가 75토큰 이내가 되도록 자동으로 BREAK를 삽입합니다 (SDXL 전용). |
 | **SubstituteTags** | 정규식 기반 태그 치환. 조건부 실행(`run_if`, `skip_if`) 지원. |
 | **SeparateLoraTags** | 프롬프트에서 lora 태그(`<lora:...>`)를 분리합니다. 동일한 lora가 여러 번 등장하면 마지막 가중치를 사용합니다. |
@@ -104,6 +105,16 @@
 | 파라미터 | 타입 | 기본값 | 설명 |
 |----------|------|--------|------|
 | `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+
+#### BoySubjectFilter
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `text` | STRING | (필수) | 입력 프롬프트 텍스트 |
+| `add_tags` | STRING | "(hetero:1.1), (couple:1.1), (deep skin:1.1)" | 남성 인물 태그가 없을 때 `((1boy))` 뒤에 넣는 태그 |
+
+남성이 필요한 태그가 없는 프롬프트는 그대로 돌려줍니다. 태그는 전체가 일치해야 하며(`sex toy`, `sexy`는 해당 없음),
+`after `로 시작하는 태그는 건너뛰고, 밑줄과 대소문자는 구분하지 않습니다.
 
 #### SubstituteTags
 
