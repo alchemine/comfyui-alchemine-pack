@@ -18,7 +18,7 @@ from PIL import Image
 
 from comfy_execution.graph import ExecutionBlocker
 
-from .lib.utils import any_typ, get_logger
+from .lib.utils import any_typ, ensure_inside, get_logger
 from .lib import joblock
 
 logger = get_logger()
@@ -864,6 +864,7 @@ class LoadWorkflow(BaseApi):
 
     def load(self, filename: str) -> tuple[str]:
         path = os.path.join(_workflows_dir(), filename)
+        ensure_inside(_workflows_dir(), path)
         with open(path, encoding="utf-8") as f:
             content = f.read()
         return (content,)
