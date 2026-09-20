@@ -837,6 +837,51 @@ class FilterColors(BasePrompt):
         return (text,)
 
 
+class FilterPlurals(BasePrompt):
+    """Of two tags that differ only by a plural "s", keep the first.
+
+    "arm up, arms up", "hand on hip, hands on hips": one spelling is
+    enough, and the one written first is the one meant. The singular is
+    crude -- a trailing "s" comes off any word of four letters or more --
+    which is all a comparison between two tags of the same prompt needs:
+    "glasses" does not turn into "glass", and "ass" is left alone.
+
+    Examples:
+        Input: 1girl, arm up, arms up, smile
+        Output: ("1girl, arm up, smile", "arms up")
+    """
+
+    INPUT_TYPES = lambda: {
+        "required": {
+            "text": ("STRING", {"forceInput": True}),
+        }
+    }
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("processed_text", "filtered_tags")
+    FUNCTION = "execute"
+    CATEGORY = "AlcheminePack/Prompt"
+
+    @classmethod
+    @exception_handler
+    @log_prompt
+    def execute(cls, text: str) -> tuple[str, str]:
+        """Keep the first of two tags that differ only by a plural "s"."""
+        first = {}
+
+        def respelled(tag):
+            singular = " ".join(
+                w[:-1] if len(w) > 3 and w.endswith("s") else w for w in tag.split(" ")
+            )
+            # the same tag twice is a duplicate, not a plural
+            return first.setdefault(singular, tag) != tag
+
+        return cls.drop_tags(text, respelled)
+
+    @classmethod
+    def IS_CHANGED(cls, text: str) -> tuple:
+        return (text,)
+
+
 class BoySubjectFilter(BasePrompt):
     """Make the subject tags agree with a tag that needs a man.
 
