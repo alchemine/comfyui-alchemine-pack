@@ -47,7 +47,9 @@ def _write_lock(record: "dict | None") -> None:
 
 
 def _workflows_dir() -> str:
-    user_dir = getattr(folder_paths, "get_user_directory", lambda: folder_paths.user_directory)()
+    user_dir = getattr(
+        folder_paths, "get_user_directory", lambda: folder_paths.user_directory
+    )()
     return os.path.join(user_dir, "default", "workflows")
 
 
@@ -118,7 +120,11 @@ class ApiComfyClient:
             try:
                 r = self.session.get(
                     f"{self.base}/view",
-                    params={"filename": filename, "subfolder": subfolder, "type": type_},
+                    params={
+                        "filename": filename,
+                        "subfolder": subfolder,
+                        "type": type_,
+                    },
                     timeout=60,
                 )
                 r.raise_for_status()
@@ -261,7 +267,9 @@ def _apply_overrides(wf: dict, overrides_str: str) -> None:
         try:
             restored = _restore_stripped_braces(s)
             data = json.loads(restored)
-            logger.info("[ApiGenerate] overrides: recovered from wildcard-stripped braces")
+            logger.info(
+                "[ApiGenerate] overrides: recovered from wildcard-stripped braces"
+            )
         except json.JSONDecodeError as e2:
             preview = s[:200].replace("\n", "\\n")
             raise ValueError(
@@ -305,9 +313,13 @@ def _prepare_and_submit(
     _inject_text(wf, positive_prompt_id, positive_prompt)
     if negative_prompt:
         if not negative_prompt_id:
-            raise ValueError("`negative_prompt_id` is required when `negative_prompt` is provided")
+            raise ValueError(
+                "`negative_prompt_id` is required when `negative_prompt` is provided"
+            )
         _inject_text(wf, negative_prompt_id, negative_prompt)
-        logger.info(f"[ApiSubmit] negative prompt injected into node {negative_prompt_id}")
+        logger.info(
+            f"[ApiSubmit] negative prompt injected into node {negative_prompt_id}"
+        )
     if seed != -1:
         _inject_seed(wf, seed_id, seed)
         logger.info(f"[ApiSubmit] seed {seed} injected into node {seed_id}")
@@ -319,7 +331,9 @@ def _prepare_and_submit(
         filename = f"api_input_{uuid.uuid4().hex}.png"
         uploaded = client.upload_image(png, filename)
         _inject_image(wf, image_node_id, uploaded)
-        logger.info(f"[ApiSubmit] uploaded image as {uploaded!r}, injected into node {image_node_id}")
+        logger.info(
+            f"[ApiSubmit] uploaded image as {uploaded!r}, injected into node {image_node_id}"
+        )
 
     _apply_overrides(wf, overrides)
     return client.submit(wf)
@@ -355,7 +369,9 @@ def _extract_images_tensor(
             pil = Image.open(io.BytesIO(data))
         except Exception as e:
             # Non-image (e.g. mp4 from VHS_VideoCombine) — skip.
-            logger.debug(f"[ApiGenerate] skipping non-image output {img.get('filename')}: {e}")
+            logger.debug(
+                f"[ApiGenerate] skipping non-image output {img.get('filename')}: {e}"
+            )
             continue
         if getattr(pil, "is_animated", False):
             for frame_idx in range(pil.n_frames):
@@ -376,7 +392,6 @@ def _extract_images_tensor(
 #################################################################
 class BaseApi:
     """Base class for API nodes."""
-
 
 
 #################################################################
@@ -533,9 +548,13 @@ class ApiGenerate(BaseApi):
         _inject_text(wf, positive_prompt_id, positive_prompt)
         if negative_prompt:
             if not negative_prompt_id:
-                raise ValueError("`negative_prompt_id` is required when `negative_prompt` is provided")
+                raise ValueError(
+                    "`negative_prompt_id` is required when `negative_prompt` is provided"
+                )
             _inject_text(wf, negative_prompt_id, negative_prompt)
-            logger.info(f"[ApiGenerate] negative prompt injected into node {negative_prompt_id}")
+            logger.info(
+                f"[ApiGenerate] negative prompt injected into node {negative_prompt_id}"
+            )
         if seed != -1:
             _inject_seed(wf, seed_id, seed)
             logger.info(f"[ApiGenerate] seed {seed} injected into node {seed_id}")
@@ -549,12 +568,16 @@ class ApiGenerate(BaseApi):
             filename = f"api_input_{uuid.uuid4().hex}.png"
             uploaded = client.upload_image(png, filename)
             _inject_image(wf, image_node_id, uploaded)
-            logger.info(f"[ApiGenerate] uploaded image as {uploaded!r}, injected into node {image_node_id}")
+            logger.info(
+                f"[ApiGenerate] uploaded image as {uploaded!r}, injected into node {image_node_id}"
+            )
 
         _apply_overrides(wf, overrides)
 
         prompt_id = client.submit(wf)
-        logger.info(f"[ApiGenerate] submitted prompt_id={prompt_id}, polling up to {timeout_sec}s...")
+        logger.info(
+            f"[ApiGenerate] submitted prompt_id={prompt_id}, polling up to {timeout_sec}s..."
+        )
         outputs = client.wait(prompt_id, timeout=timeout_sec)
         image_tensor = _extract_images_tensor(client, outputs, output_id or None)
         logger.info(f"[ApiGenerate] received {image_tensor.shape[0]} frame(s)")
@@ -767,13 +790,17 @@ class ApiCollect(BaseApi):
             return "skip"  # not in history yet -> still running
         status = entry.get("status", {})
         if status.get("status_str") == "error":
-            logger.warning(f"[ApiCollect] job {rec['prompt_id']} errored on remote; clearing lock")
+            logger.warning(
+                f"[ApiCollect] job {rec['prompt_id']} errored on remote; clearing lock"
+            )
             with _lock_guard:
                 _write_lock(None)
             return "skip"
         if not status.get("completed"):
             return "skip"
-        tensor = _extract_images_tensor(client, entry["outputs"], rec.get("output_id") or None)
+        tensor = _extract_images_tensor(
+            client, entry["outputs"], rec.get("output_id") or None
+        )
         with _lock_guard:
             _write_lock(None)
         logger.info(
