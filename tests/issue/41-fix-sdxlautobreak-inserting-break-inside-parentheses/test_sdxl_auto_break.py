@@ -25,7 +25,9 @@ class FakeClip:
 
 @pytest.fixture
 def run(pack):
-    return lambda text: pack("prompt").SDXLAutoBreak.execute(clip=FakeClip(), text=text)[0]
+    return lambda text: pack("prompt").SDXLAutoBreak.execute(
+        clip=FakeClip(), text=text
+    )[0]
 
 
 TAIL = "(white background,:-1) (@ @,:-1.1) (light particles,:-1.2) posing, shade"

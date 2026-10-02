@@ -38,3 +38,11 @@ uv venv
 uv pip install --python .venv/bin/python -r requirements.txt -r tests/requirements.txt
 .venv/bin/python -m pytest -c tests/pytest.ini tests
 ```
+
+## 테스트 결과
+| | 수정 전 (`08e788f`) | 수정 후 |
+|---|---|---|
+| `test_break_stays_out_of_parentheses` | `n=20~23`의 4개 실패 | 12개 모두 통과 |
+| `test_break_still_splits_between_tags` | 통과 | 통과 |
+| 기존 테스트 92개 | 통과 | 통과 |
+| 합계 | 4 failed, 101 passed | 105 passed |
