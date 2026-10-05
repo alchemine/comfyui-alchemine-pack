@@ -5,7 +5,7 @@ description = """Prompt filtering, lazy execution, LoRA tag loading, image adjus
 [a/FlowControl](https://github.com/alchemine/comfyui-alchemine-pack/blob/main/workflows/comfyui-alchemine-pack-workflow-FlowControl.png): lazy execution
 Cached LoRA Tag loader, Adjust Image, Everywhere broadcaster, etc."""
 
-version = "7.0.0"
+version = "7.1.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 
