@@ -1031,11 +1031,13 @@ class SDXLAutoBreak(BasePrompt):
             # 각 단어와 그 끝 위치 추적 (원본 보존을 위해)
             words = []
             word_ends = []
-            for match in re.finditer(r"[^,]+", seg):
-                word = match.group().strip()
-                if word:
-                    words.append(word)
-                    word_ends.append(match.end())
+            end = 0
+            for piece in cls.split_tags(seg):
+                end += len(piece)
+                if piece.strip():
+                    words.append(piece.strip())
+                    word_ends.append(end)
+                end += 1  # the comma split_tags dropped
 
             n_words = len(words)
             if n_words >= 2:
