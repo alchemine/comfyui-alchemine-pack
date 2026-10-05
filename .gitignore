@@ -7,4 +7,3 @@ __pycache__/
 playground/
 resources/*
 !resources/wildcards.yaml
-jobs.lock

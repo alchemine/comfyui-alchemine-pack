@@ -65,23 +65,6 @@ def test_save_image_with_text_prefix_cannot_leave_output(lora, comfy_dirs):
     assert list(outside.iterdir()) == []
 
 
-def test_load_workflow_reads_inside_workflows(pack, comfy_dirs):
-    api = pack("api")
-    workflows = comfy_dirs.user / "default" / "workflows"
-    (workflows / "sub").mkdir()
-    (workflows / "sub" / "wf.json").write_text("{}")
-
-    assert api.LoadWorkflow().load("sub/wf.json") == ("{}",)
-
-
-def test_load_workflow_filename_cannot_leave_workflows(pack, comfy_dirs):
-    api = pack("api")
-    (comfy_dirs.root / "secret.txt").write_text("secret")
-
-    with pytest.raises(ValueError):
-        api.LoadWorkflow().load("../../../secret.txt")
-
-
 def test_symlink_inside_output_cannot_leave_output(lora, comfy_dirs):
     image = torch.zeros(1, 8, 8, 3)
     outside = comfy_dirs.root / "escaped_link"

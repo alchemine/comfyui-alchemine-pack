@@ -9,21 +9,11 @@ import threading
 from pathlib import Path
 from functools import wraps
 
-from dotenv import load_dotenv
-
 
 #################################################################
 # Constants
 #################################################################
 ROOT_DIR = Path(__file__).parent.parent.parent
-
-# `.env` is optional: load it when present, otherwise just use the OS
-# environment. Nodes that actually need a credential read it at execution time
-# and raise a clear error (shown as a ComfyUI error dialog) if it's still unset,
-# so the pack always loads even without a `.env`.
-_env_path = ROOT_DIR / ".env"
-if _env_path.exists():
-    load_dotenv(_env_path)
 
 RESOURCES_DIR = ROOT_DIR / "resources"
 WILDCARD_PATH = RESOURCES_DIR / "wildcards.yaml"
