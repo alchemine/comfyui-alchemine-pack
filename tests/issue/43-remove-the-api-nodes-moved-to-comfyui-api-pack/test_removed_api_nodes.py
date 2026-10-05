@@ -47,7 +47,9 @@ def test_moved_node_files_are_gone():
 
 
 def test_dotenv_is_not_required():
-    assert "python-dotenv" not in (PACK_DIR / "requirements.txt").read_text(
+    requirements = PACK_DIR / "requirements.txt"
+
+    assert not requirements.exists() or "python-dotenv" not in requirements.read_text(
         encoding="utf-8"
     )
 

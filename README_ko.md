@@ -1,15 +1,23 @@
 # ComfyUI-Alchemine-Pack
 
-[ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다. 프롬프트 처리, LLM 추론, LoRA 태그 로딩, Grok 이미지-투-비디오, 원격 ComfyUI API 실행, 워크플로우 제어, 이미지 보정, 입력 브로드캐스트 등 다양한 유틸리티 노드를 제공합니다.
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다. 프롬프트 처리, LoRA 태그 로딩, 워크플로우 제어, 이미지 보정, 입력 브로드캐스트 등 다양한 유틸리티 노드를 제공합니다.
+
+## 관련 팩
+
+| 팩 | 노드 |
+|----|------|
+| [comfyui-generator-pack](https://github.com/alchemine/comfyui-generator-pack) | Danbooru 데이터셋으로 태그 제안, 문장을 태그로 변환, 캐릭터 태그 뽑기: Tags Generator, Tags Extractor, Character Tags Generator, Tags Conflict Filter, Classify Tags, Group Tags |
+| [comfyui-daam-pack](https://github.com/alchemine/comfyui-daam-pack) | 프롬프트 태그별 cross-attention 히트맵: Sampler Custom (DAAM), DAAM Tag Explorer |
+| [comfyui-danbooru-pack](https://github.com/alchemine/comfyui-danbooru-pack) | Danbooru 태그 조회와 포스트 다운로드 |
+| [comfyui-evaluate-pack](https://github.com/alchemine/comfyui-evaluate-pack) | Evaluate: 노드에 쓴 Python 코드로 문자열을 변환 |
+| [comfyui-api-pack](https://github.com/alchemine/comfyui-api-pack) | 외부 API: zero-shot 분류, OpenAI Inference, 원격 ComfyUI API (Api Generate / Submit / Collect, Load Workflow), Grok 이미지-투-비디오 |
+
+이 팩에서 옮겨 간 노드는 노드 id가 그대로라서, 그 노드가 있는 팩을 설치하면 기존 워크플로가 그대로 열립니다.
 
 ## 설치 방법
 
 1. 이 저장소를 ComfyUI의 `custom_nodes` 디렉터리에 클론하거나 복사합니다.
-2. 의존성 설치:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. ComfyUI를 재시작합니다.
+2. ComfyUI를 재시작합니다.
 
 ## 제공 노드
 
@@ -33,10 +41,6 @@
 | **SubstituteTags** | 정규식 기반 태그 치환. 조건부 실행(`run_if`, `skip_if`) 지원. |
 | **SeparateLoraTags** | 프롬프트에서 lora 태그(`<lora:...>`)를 분리합니다. 동일한 lora가 여러 번 등장하면 마지막 가중치를 사용합니다. |
 | **TextPrompt** | `dynamicPrompts`를 끈 순수 멀티라인 텍스트 입력. `{a|b}`를 입력해도 커서가 끝으로 튀지 않으며, 와일드카드는 실행 시점에 Python에서 확장됩니다. |
-
-> ℹ️ **태그 생성 노드는 이 팩에서 분리되었습니다.** 이제
-> [comfyui-generator-pack](https://github.com/alchemine/comfyui-generator-pack)의
-> `Tags Generator`, `Tags Conflict Filter`, `Classify Tags`, `Group Tags`로 제공됩니다.
 
 #### ProcessTags
 
@@ -213,59 +217,11 @@ denoise → edge enhance → CAS → local contrast → resize. 디노이즈가 
 
 ---
 
-> ℹ️ **DAAM 노드는 이 팩에서 분리되었습니다.** `Sampler Custom (DAAM)`과 `DAAM Tag Explorer`는 이제
-> [comfyui-daam-pack](https://github.com/alchemine/comfyui-daam-pack)에 있습니다. 노드 id는 그대로라
-> 해당 팩을 설치하면 기존 워크플로가 그대로 열립니다.
-
 ### Everywhere 노드 (`AlcheminePack/Everywhere`)
 
 | 노드 | 설명 |
 |------|------|
 | **Everywhere** | 고정된 이름의 입력(`model`, `clip`, `vae`, `positive`, `negative`, `latent_image`, `seed`, `blacklist`)을 갖는 [cg-use-everywhere](https://github.com/chrisgoringe/cg-use-everywhere) 브로드캐스터. 입력 이름이 고정되어 UE의 이름 기반 라우팅이 유지되므로, 두 컨디셔닝을 수동 이름 변경 없이 구분해 전달합니다. cg-use-everywhere 필요. |
-
-> ℹ️ **Danbooru 노드는 이 팩에서 분리되었습니다.** 이제
-> [comfyui-danbooru-pack](https://github.com/alchemine/comfyui-danbooru-pack)에 있습니다. 노드 id는 그대로라
-> 해당 팩을 설치하면 기존 워크플로우가 그대로 열립니다.
-
----
-
-### 추론 노드 (`AlcheminePack/Inference`)
-
-![Inference Workflow](workflows/comfyui-alchemine-pack-workflow-Inference.png)
-
-| 노드 | 설명 |
-|------|------|
-| **OpenAI Inference** | OpenAI 호환 API로 텍스트 생성. 비전 및 씽킹 모드 지원. |
-
-#### OpenAI Inference
-
-OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI, vLLM, Ollama의 `/v1` 엔드포인트, Gemini의 OpenAI 호환 엔드포인트. `base_url`/`api_key`/`model`만 원하는 서버로 지정하면 됩니다.
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `prompt` | STRING | "Hello, world!" | 사용자 프롬프트 |
-| `system_instruction` | STRING | "You are a helpful assistant." | 시스템 프롬프트 |
-| `base_url` | STRING | "" | API base URL, 예: `https://api.openai.com/v1` (`.env`의 `OPENAI_BASE_URL`로 설정 가능) |
-| `api_key` | STRING | "" | API 키 (`.env`의 `OPENAI_API_KEY`로 설정 가능) |
-| `model` | STRING | "" | 모델명. 비우면 `/models`에 모델이 하나일 때 자동 감지 |
-| `max_output_tokens` | INT | 100 | 최대 출력 토큰 (최대 131072) |
-| `seed` | INT | 0 | 랜덤 시드 |
-| `temperature` | FLOAT | 0.7 | 샘플링 온도 (0.0–2.0) |
-| `think` | BOOLEAN | False | 씽킹 모드 활성화 |
-| `image` | IMAGE | (선택) | 비전 작업용 입력 이미지 |
-
-| 출력 | 설명 |
-|------|------|
-| `response` | 모델의 답변 (`<think>` 블록은 제거됨) |
-| `reasoning` | 사고 과정. `reasoning_content` 필드 또는 인라인 `<think>...</think>` 블록에서 추출 (없으면 빈 문자열) |
-
-> **참고:** 응답은 인메모리 캐싱됩니다 (LRU, 최근 10개 입력 조합) — 완전히 동일한 요청을 다시 실행하면 API 호출 없이 캐시된 응답을 반환합니다.
-
----
-
-> ℹ️ **Evaluate 노드는 이 팩에서 분리되었습니다.** 이제
-> [comfyui-evaluate-pack](https://github.com/alchemine/comfyui-evaluate-pack)에 있습니다. 노드 id는
-> 그대로라 해당 팩을 설치하면 기존 워크플로가 그대로 열립니다.
 
 ---
 
@@ -288,7 +244,7 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 |------|------|
 | `value` | `signal`이 해결된 뒤 그대로 전달되는 `value` 입력 |
 
-**사용 사례:** 순차 실행이 필요할 때(예: 생성 A가 완료된 후에만 생성 B 실행), 또는 상류 노드가 `ExecutionBlocker`를 반환하는 동안 하류 분기를 건너뛰고 싶을 때(예: **Api Collect**에 **OpenAI Inference** + **Api Submit** 체인을 물려, 직전 작업이 끝난 뒤에만 새 작업을 만들도록 게이트).
+**사용 사례:** 순차 실행이 필요할 때(예: 생성 A가 완료된 후에만 생성 B 실행), 또는 상류 노드가 `ExecutionBlocker`를 반환하는 동안 하류 분기를 건너뛰고 싶을 때(예: [comfyui-api-pack](https://github.com/alchemine/comfyui-api-pack)의 **Api Submit**을 **Api Collect**에 물려, 직전 작업이 끝난 뒤에만 새 작업을 제출하도록 게이트).
 
 > **게이트 그래프 점화를 위한 mute:** `value`가 **첫 번째** 입력이므로, 이 노드를 mute(bypass)하면 `signal`을 무시하고 `value`가 그대로 통과합니다. 영원히 막혀 있을 루프를 콜드 스타트할 때 유용합니다 — 예를 들어 **Api Collect**에 아직 작업이 없어 계속 `ExecutionBlocker`를 내보낼 때, 한 번만 게이트를 mute해서 첫 **Api Submit**을 발사하고, 다시 un-mute해 정상 게이트로 복귀합니다.
 
@@ -329,69 +285,6 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 
 ---
 
-### Grok 노드 (`AlcheminePack/Grok`)
-
-| 노드 | 설명 |
-|------|------|
-| **Grok Generate** | 이미지 한 장으로 Grok Imagine I2V 영상 클립을 만들어 output 폴더에 네이티브 VIDEO로 저장합니다 (노드에서 인라인 미리보기 제공). |
-| **Grok Submit** | Fire-and-forget 제출. 생성 요청만 보내고 즉시 `request_id`를 반환합니다 (대기하지 않음). |
-| **Grok Collect** | Grok Submit으로 제출한 진행 중 잡을 수집합니다. 준비되면 VIDEO를 반환하고, 아니면 다운스트림을 차단합니다. |
-
-#### Grok Generate
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `image` | IMAGE | (필수) | 소스 이미지 (첫 프레임) |
-| `prompt` | STRING | "" | 움직임/연출 설명 (선택) |
-| `duration` | INT | 5 | 영상 길이(초) (1–15) |
-| `resolution` | ENUM | "720p" | "720p" 또는 "480p" |
-| `model` | STRING | "grok-imagine-video-1.5-preview" | Grok 영상 모델 |
-| `filename_prefix` | STRING | "grok/GrokVideo" | ComfyUI output 디렉터리 기준 저장 경로 접두사 |
-| `poll_interval` | INT | 5 | 상태 폴링 간격(초) (1–60) |
-| `timeout` | INT | 600 | 생성 대기 최대 시간(초) (30–3600) |
-| `access_token` | STRING | "" | 선택. 비우면 `GROK_ACCESS_TOKEN` 환경변수 사용 |
-| `refresh_token` | STRING | "" | 선택. 비우면 `GROK_REFRESH_TOKEN` 환경변수 사용 |
-| `client_id` | STRING | "" | 선택. 비우면 `GROK_CLIENT_ID` 환경변수 사용 |
-
-| 출력 | 설명 |
-|------|------|
-| `video` | 생성된 클립(소리 포함). 노드에서 인라인 미리보기로도 표시됨 |
-
-> **자격증명:** 세 토큰을 노드 입력으로 직접 넣거나, 비워 두면 `GROK_ACCESS_TOKEN` / `GROK_REFRESH_TOKEN` / `GROK_CLIENT_ID` 환경변수에서 읽습니다. 401/403 발생 시 access token은 자동 갱신됩니다.
-
-#### Grok Submit
-
-입력은 **Grok Generate**와 동일하며(`poll_interval`/`timeout` 제외), 선택 `label`이 추가됩니다. OUTPUT_NODE라서 출력을 소비하는 노드가 없어도 실행됩니다. mp4 저장 경로는 제출 시점에 예약되어 lock에 기록되고, 클립이 준비되면 Collect가 그 경로에 저장합니다.
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `label` | STRING | "" | 선택. 잡과 함께 기록되는 라벨 (이후 Grok Collect가 반환) |
-
-| 출력 | 설명 |
-|------|------|
-| `request_id` | 제출된 잡의 request id (이미 진행 중인 Grok 잡이 있으면 빈 문자열) |
-
-#### Grok Collect
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `wait_sec` | INT | 0 | `0`이면 준비됐을 때만 수집하고 아니면 즉시 건너뜀. 그 외엔 이 시간(초)까지 대기 (0–3600) |
-| `poll_interval` | FLOAT | 5.0 | 대기 중 폴링 간격(초) (0.5–60.0) |
-| `access_token` | STRING | "" | 선택. 비우면 `GROK_ACCESS_TOKEN` 환경변수 사용 |
-| `refresh_token` | STRING | "" | 선택. 비우면 `GROK_REFRESH_TOKEN` 환경변수 사용 |
-| `client_id` | STRING | "" | 선택. 비우면 `GROK_CLIENT_ID` 환경변수 사용 |
-
-| 출력 | 설명 |
-|------|------|
-| `video` | 준비된 클립. 없으면 다운스트림을 건너뛰는 `ExecutionBlocker` |
-| `label` | 제출 시 기록된 라벨 |
-
-> **수거 시 자격증명:** Collect도 Grok API를 호출(폴링/다운로드)하므로 토큰을 입력 또는 환경변수에서 다시 읽습니다 — 토큰은 lock 파일에 저장하지 **않습니다**. Grok Generate와 같은 방식으로 넣어 주세요.
-
-> **종류별 단일 진행 잡:** Grok과 [API](#api-노드-alcheminepackapi) 노드는 패키지 디렉터리의 단일 `jobs.lock`을 공유하지만 종류별로 슬롯이 분리됩니다 — Grok 잡과 API 잡이 동시에 진행될 수 있고, 각 종류는 하나만 허용됩니다. 해당 종류의 잡이 이미 진행 중이면 Submit은 건너뛰고, Collect가 완료되면 슬롯을 비웁니다. `/loop` 등으로 Collect를 반복 실행하면 완료된 클립을 받아올 수 있습니다.
-
----
-
 ### Model 노드 (`AlcheminePack/Model`)
 
 | 노드 | 설명 |
@@ -418,79 +311,6 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 
 ---
 
-### API 노드 (`AlcheminePack/API`)
-
-![API Workflow](workflows/comfyui-alchemine-pack-workflow-API.png)
-
-워크플로우를 원격 ComfyUI 인스턴스의 HTTP API로 실행합니다 (예: [RunPod](https://www.runpod.io/) 파드 또는 접근 가능한 임의의 ComfyUI). 모든 노드는 UI 워크플로우 포맷이 아니라 **API 포맷** 워크플로우 JSON(ComfyUI 메뉴: "Save (API Format)")을 받습니다. `api_url`은 원격 베이스 URL로, 예: `https://xxxx-8188.proxy.runpod.net/` 또는 `http://127.0.0.1:8188` 입니다.
-
-| 노드 | 설명 |
-|------|------|
-| **Load Workflow** | `ComfyUI/user/default/workflows/`의 API 포맷 워크플로우 JSON을 읽어 STRING으로 반환합니다. |
-| **Api Generate** | 워크플로우를 원격 ComfyUI에 보내 완료될 때까지 기다린 뒤 출력 이미지/프레임을 반환합니다. |
-| **Api Submit** | Fire-and-forget 제출. 잡을 기록하고 즉시 `job_id`를 반환합니다 (대기하지 않음). |
-| **Api Collect** | Api Submit으로 제출한 진행 중 잡을 수집합니다. 준비되면 프레임을 반환하고, 아니면 다운스트림을 차단합니다. |
-
-#### Load Workflow
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `filename` | ENUM | (필수) | `user/default/workflows/` 아래의 `.json` 파일 |
-
-| 출력 | 설명 |
-|------|------|
-| `text` | 워크플로우 JSON 내용 |
-
-#### Api Generate
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `workflow` | STRING (입력) | (필수) | API 포맷 워크플로우 JSON 문자열 또는 파일 경로 |
-| `positive_prompt` | STRING (입력) | (필수) | 포지티브 프롬프트. `positive_prompt_id`에 주입됨 |
-| `positive_prompt_id` | STRING | (필수) | 포지티브 프롬프트를 받을 노드 id |
-| `negative_prompt_id` | STRING | "" | `negative_prompt`(제공 시)를 받을 노드 id |
-| `output_id` | STRING | "" | `images`/`gifs` 출력을 가져올 노드 id |
-| `seed` | INT | -1 | `-1`이면 워크플로우의 기존 시드 유지 |
-| `seed_id` | STRING | "" | `seed`/`noise_seed` 입력에 시드를 받을 노드 id |
-| `api_url` | STRING | "" | 원격 ComfyUI 베이스 URL. 예: `https://xxxx-8188.proxy.runpod.net/` 또는 `http://127.0.0.1:8188` |
-| `image_node_id` | STRING | "" | 업로드한 `image`를 받을 LoadImage 노드 id |
-| `timeout_sec` | INT | 300 | 최대 폴링 시간(초) (1–36000) |
-| `negative_prompt` | STRING (입력) | "" | 선택. 비어 있으면 건너뜀 |
-| `image` | IMAGE | (선택) | 선택. 원격에 업로드되어 `image_node_id`에 바인딩됨 |
-| `overrides` | STRING (입력) | "" | 선택. JSON `{node_id: <노드 전체 dict>}`. 각 항목이 **노드 전체를 교체**하며 마지막에 적용됨 |
-
-| 출력 | 설명 |
-|------|------|
-| `output` | 디코드된 이미지/프레임 텐서 (애니메이션 출력은 프레임으로 펼쳐짐) |
-
-#### Api Submit
-
-입력은 **Api Generate**와 동일하며(`timeout_sec` 제외), 선택 `label`이 추가됩니다. OUTPUT_NODE라서 출력을 소비하는 노드가 없어도 실행됩니다.
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `label` | STRING | "" | 선택. 잡과 함께 기록되는 라벨 (이후 Api Collect가 반환) |
-
-| 출력 | 설명 |
-|------|------|
-| `job_id` | 제출된 잡 id (이미 진행 중인 잡이 있으면 빈 문자열) |
-
-#### Api Collect
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `wait_sec` | INT | 0 | `0`이면 준비됐을 때만 수집하고 아니면 즉시 건너뜀. 그 외엔 이 시간(초)까지 대기 (0–36000) |
-| `poll_interval` | FLOAT | 2.0 | 대기 중 폴링 간격(초) (0.5–60.0) |
-
-| 출력 | 설명 |
-|------|------|
-| `output` | 준비된 프레임. 없으면 다운스트림을 건너뛰는 `ExecutionBlocker` |
-| `label` | 제출 시 기록된 라벨 |
-
-> **종류별 단일 진행 잡:** API와 [Grok](#grok-노드-alcheminepackgrok) 노드는 패키지 디렉터리의 단일 `jobs.lock`을 공유하지만 종류별로 슬롯이 분리됩니다 — API 잡과 Grok 잡이 동시에 진행될 수 있고, 각 종류는 하나만 허용됩니다. 해당 종류의 잡이 이미 진행 중이면 Submit은 건너뛰고, Collect가 완료되면 슬롯을 비웁니다. `/loop` 등으로 Collect를 반복 실행하면 완료된 결과를 받아올 수 있습니다.
-
----
-
 ## 와일드카드 지원
 
 `FilterTags`와 `ProcessTags` 노드는 `resources/wildcards.yaml`에 정의된 와일드카드를 지원합니다.
@@ -498,31 +318,6 @@ OpenAI 호환 백엔드를 하나의 노드로 모두 처리합니다 — OpenAI
 **예시:** 블랙리스트에 `<color>`를 사용하면 YAML 파일에 정의된 모든 색상으로 펼쳐져 하나의 정규식으로 합쳐집니다. `(shiny|dark|colored|<color>) skin` 한 줄로 `blue skin`, `grey skin`, `two-tone skin` 등이 모두 차단됩니다.
 
 와일드카드 팩이 쓰는 `__color__`가 아니라 꺾쇠 괄호입니다. 와일드카드 프로세서(ImpactWildcardProcessor, Dynamic Prompts)는 이 노드보다 **앞에서** 실행되므로 FilterTags가 보기 전에 `__color__`를 소비해버리고, 그것도 **하나만 뽑는** 방식이라 블랙리스트가 원하는 것과 정반대입니다. `<...>`는 어떤 와일드카드 프로세서도 사용하지 않는 문법이라 그대로 통과해 이 노드까지 도달합니다. 와일드카드 프로세서를 거치지 않는 블랙리스트라면 `__color__` 형태도 계속 동작합니다.
-
-## 설정
-
-> **`.env`는 선택 사항입니다** — 없어도 팩은 항상 정상 로드됩니다. [`.env.example`](.env.example)을 `.env`로 복사한 뒤 필요한 변수만 채우세요 (또는 같은 값을 노드 입력으로 전달). 자격증명이 필요한 노드가 값을 못 찾으면 **실행 시점에** 명확한 에러(ComfyUI 에러 창)를 띄웁니다 — 로딩 단계에선 절대 죽지 않습니다.
-
-### OpenAI Inference 기본값 (`.env` 또는 노드 입력)
-
-**OpenAI Inference** 노드는 먼저 노드 입력에서 `base_url`/`api_key`를 읽고, 입력이 비어 있으면 아래 `.env` 변수를 폴백으로 사용합니다:
-
-```
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_API_KEY=your-api-key
-```
-
-### Grok 자격증명 (`.env` 또는 노드 입력)
-
-**Grok** 노드(Generate / Submit / Collect)는 자격증명을 노드 입력에서 먼저 읽고, 입력이 비어 있으면 아래 `.env` 변수로 대체합니다:
-
-```
-GROK_ACCESS_TOKEN=...
-GROK_REFRESH_TOKEN=...
-GROK_CLIENT_ID=...
-```
-
-access token은 401/403에서 자동 갱신됩니다. `Grok token refresh failed (...)` 에러가 뜨면 refresh token이나 client_id가 만료/폐기된 것이니, x.ai에서 다시 인증해 값을 갱신하세요.
 
 ## 예시
 
