@@ -1,6 +1,6 @@
 # ComfyUI-Alchemine-Pack
 
-[ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다. 프롬프트 처리, LoRA 태그 로딩, 워크플로우 제어, 이미지 보정, 입력 브로드캐스트 등 다양한 유틸리티 노드를 제공합니다.
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI)를 위한 커스텀 노드 팩입니다. 프롬프트 처리, LoRA 태그 로딩, 워크플로우 제어, 입력 브로드캐스트 등 다양한 유틸리티 노드를 제공합니다.
 
 ## 관련 팩
 
@@ -11,6 +11,7 @@
 | [comfyui-danbooru-pack](https://github.com/alchemine/comfyui-danbooru-pack) | Danbooru 태그 조회와 포스트 다운로드 |
 | [comfyui-evaluate-pack](https://github.com/alchemine/comfyui-evaluate-pack) | Evaluate: 노드에 쓴 Python 코드로 문자열을 변환 |
 | [comfyui-api-pack](https://github.com/alchemine/comfyui-api-pack) | 외부 API: zero-shot 분류, OpenAI Inference, 원격 ComfyUI API (Api Generate / Submit / Collect, Load Workflow), Grok 이미지-투-비디오 |
+| [comfyui-filter-pack](https://github.com/alchemine/comfyui-filter-pack) | 이미지 필터: Adjust Image (색 보정, 샤픈, 디노이즈, 리사이즈) |
 
 이 팩에서 옮겨 간 노드는 노드 id가 그대로라서, 그 노드가 있는 팩을 설치하면 기존 워크플로가 그대로 열립니다.
 
@@ -181,39 +182,6 @@ ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중�
 | 출력 | 설명 |
 |------|------|
 | `text` | 모든 와일드카드 그룹이 해석된 프롬프트 |
-
----
-
-### 이미지 노드 (`AlcheminePack/Image`)
-
-#### AdjustImage
-
-색 보정, 샤픈/디노이즈 필터 모음, 선택적 리사이즈를 한 노드에 담았습니다. 모든
-값의 기본이 무변화라 슬라이더를 움직이기 전까지는 이미지를 그대로 통과시킵니다.
-모든 연산이 이미지가 있는 디바이스의 torch 연산이라 GPU 텐서가 numpy를 오가지
-않으며, RGB만 처리하고 알파 채널은 그대로 보존합니다.
-
-처리 순서는 의도적으로 고정입니다: brightness → contrast → saturation → gamma →
-denoise → edge enhance → CAS → local contrast → resize. 디노이즈가 샤픈보다
-먼저라, 제거하려던 노이즈를 샤프너가 증폭하는 일이 없습니다.
-
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `image` | IMAGE | (필수) | 입력 이미지 |
-| `brightness` | FLOAT | 1.0 | 1.0 = 무변화, <1.0 어둡게, >1.0 밝게 |
-| `contrast` | FLOAT | 1.0 | 중간 회색 0.5 기준 스케일 |
-| `saturation` | FLOAT | 1.0 | 0.0 = 흑백, >1.0 = 더 선명하게 |
-| `gamma` | FLOAT | 1.0 | <1.0 중간톤 밝게, >1.0 어둡게 |
-| `edge_enhance` | FLOAT | 0.0 | 고정 엣지 강화 커널의 블렌드 비율 |
-| `cas` | FLOAT | 0.0 | Contrast Adaptive Sharpening (AMD FidelityFX). 평탄한 영역을 더, 이미 선명한 엣지는 덜 샤픈해 선화가 바스러지지 않음 |
-| `local_contrast` | FLOAT | 0.0 | 큰 반경 언샤프("clarity"). 중간 스케일의 깊이감 추가 |
-| `denoise` | FLOAT | 0.0 | 엣지 보존 bilateral 필터. 선은 유지하며 평탄 노이즈와 밴딩 제거 |
-| `upscale_method` | COMBO | lanczos | `scale_by` != 1.0일 때의 리샘플링 방식 |
-| `scale_by` | FLOAT | 1.0 | 배율. 1.0 = 리사이즈 없음 |
-
-| 출력 | 설명 |
-|------|------|
-| `image` | 보정된 이미지 |
 
 ---
 
