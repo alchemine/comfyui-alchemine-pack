@@ -2,7 +2,6 @@
 
 from .nodes.everywhere import AnythingEverywhereExtended
 from .nodes.flow_control import LazyExecution
-from .nodes.image import AdjustImage
 from .nodes.lora import DownloadImage, SaveImageWithText
 from .nodes.model import CachedLoraTagLoader
 from .nodes.prompt import (
@@ -28,8 +27,6 @@ NODE_CLASS_MAPPINGS = {
     "Anything Everywhere Extended": AnythingEverywhereExtended,
     # AlcheminePack/FlowControl ######################################################
     "LazyExecution": LazyExecution,
-    # AlcheminePack/Image ############################################################
-    "AdjustImage": AdjustImage,
     # AlcheminePack/Lora #############################################################
     "DownloadImage": DownloadImage,
     "SaveImageWithText": SaveImageWithText,
@@ -58,8 +55,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Anything Everywhere Extended": "Everywhere",
     # AlcheminePack/FlowControl ######################################################
     "LazyExecution": "Lazy Execution",
-    # AlcheminePack/Image ############################################################
-    "AdjustImage": "Adjust Image",
     # AlcheminePack/Lora #############################################################
     "DownloadImage": "Download Image",
     "SaveImageWithText": "Save Image With Text",
