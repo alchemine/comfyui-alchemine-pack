@@ -1,6 +1,6 @@
 # ComfyUI-Alchemine-Pack
 
-A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, LoRA-tag loading, workflow control, image adjustment, and input broadcasting.
+A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that provides utility nodes for prompt processing, LoRA-tag loading, workflow control, and input broadcasting.
 
 ## Related Packs
 
@@ -11,6 +11,7 @@ A custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that
 | [comfyui-danbooru-pack](https://github.com/alchemine/comfyui-danbooru-pack) | Danbooru tag retrievers and posts downloader |
 | [comfyui-evaluate-pack](https://github.com/alchemine/comfyui-evaluate-pack) | Evaluate: transforms a string with Python code written in the node |
 | [comfyui-api-pack](https://github.com/alchemine/comfyui-api-pack) | External APIs: zero-shot classification, OpenAI Inference, remote ComfyUI API (Api Generate / Submit / Collect, Load Workflow), Grok image-to-video |
+| [comfyui-filter-pack](https://github.com/alchemine/comfyui-filter-pack) | Image filters: Adjust Image (colour correction, sharpen, denoise, resize) |
 
 Nodes that moved out of this pack kept their node ids, so existing workflows load once the pack that owns them is installed.
 
@@ -182,40 +183,6 @@ syntax is resolved.
 | Output | Description |
 |--------|-------------|
 | `text` | Prompt with every wildcard group resolved |
-
----
-
-### Image Nodes (`AlcheminePack/Image`)
-
-#### AdjustImage
-
-Colour correction, a suite of sharpen/denoise filters and optional resizing in
-one node. Every knob defaults to a no-op, so the node passes the image through
-untouched until a slider is moved. All adjustments are torch ops running on the
-image's own device, so a GPU tensor never round-trips through numpy; RGB is
-processed and an existing alpha channel is passed through untouched.
-
-The order is fixed and deliberate: brightness → contrast → saturation → gamma →
-denoise → edge enhance → CAS → local contrast → resize. Denoise runs before any
-sharpening so the sharpeners do not amplify the noise they were meant to remove.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `image` | IMAGE | (required) | Input image |
-| `brightness` | FLOAT | 1.0 | 1.0 = no change, <1.0 darker, >1.0 brighter |
-| `contrast` | FLOAT | 1.0 | Scales around mid-gray 0.5 |
-| `saturation` | FLOAT | 1.0 | 0.0 = grayscale, >1.0 = more vivid |
-| `gamma` | FLOAT | 1.0 | <1.0 brightens mid-tones, >1.0 darkens them |
-| `edge_enhance` | FLOAT | 0.0 | Blend factor for a fixed edge-enhance kernel |
-| `cas` | FLOAT | 0.0 | Contrast Adaptive Sharpening (AMD FidelityFX). Sharpens flat regions more and already-sharp edges less, so it avoids crunchy line art |
-| `local_contrast` | FLOAT | 0.0 | Large-radius unsharp ("clarity"); adds mid-scale depth |
-| `denoise` | FLOAT | 0.0 | Edge-preserving bilateral filter; removes flat noise and banding while keeping lines |
-| `upscale_method` | COMBO | lanczos | Resampling used when `scale_by` != 1.0 |
-| `scale_by` | FLOAT | 1.0 | Scale factor; 1.0 = no resize |
-
-| Output | Description |
-|--------|-------------|
-| `image` | Adjusted image |
 
 ---
 
