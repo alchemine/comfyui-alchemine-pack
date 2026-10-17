@@ -34,7 +34,9 @@ def pack(comfy_dirs):
     graph = types.ModuleType("comfy_execution.graph")
     graph.ExecutionBlocker = type("ExecutionBlocker", (), {})
     server = types.ModuleType("server")
-    server.PromptServer = types.SimpleNamespace(instance=types.SimpleNamespace(send_sync=lambda *a, **k: None))
+    server.PromptServer = types.SimpleNamespace(
+        instance=types.SimpleNamespace(send_sync=lambda *a, **k: None)
+    )
     sys.modules["server"] = server
 
     sys.modules["comfy_execution"] = types.ModuleType("comfy_execution")

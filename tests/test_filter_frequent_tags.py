@@ -7,6 +7,7 @@ def run(pack):
         return pack("lora").FilterFrequentTags.execute(
             captions=captions, threshold=[threshold], fixed_tags=[fixed_tags]
         )
+
     return _run
 
 

@@ -2,7 +2,13 @@
 
 from .nodes.everywhere import AnythingEverywhereExtended
 from .nodes.flow_control import LazyExecution
-from .nodes.lora import DownloadImage, LoadImagesFromDir, SaveImageWithText, FilterFrequentTags, TrainSdxlLora
+from .nodes.lora import (
+    DownloadImage,
+    LoadImagesFromDir,
+    SaveImageWithText,
+    FilterFrequentTags,
+    TrainSdxlLora,
+)
 from .nodes.model import CachedLoraTagLoader
 from .nodes.prompt import (
     ProcessTags,
