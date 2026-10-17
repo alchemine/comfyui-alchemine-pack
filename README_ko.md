@@ -223,7 +223,10 @@ ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중�
 | 노드 | 설명 |
 |------|------|
 | **DownloadImage** | URL의 이미지를 ComfyUI output 디렉터리로 다운로드합니다. |
-| **SaveImageWithText** | 이미지와 `.txt` 캡션 파일을 함께 저장합니다 (LoRA 학습 데이터셋 준비용). |
+| **LoadImagesFromDir** | ComfyUI output 폴더 아래의 폴더에 있는 이미지를 모두 리스트로 읽고 파일 이름도 함께 냅니다. `SaveImageWithText`, 다운로더 노드와 같은 상대 경로로 데이터셋 폴더를 가리킬 수 있습니다. 폴더의 파일이 바뀌면 다시 실행됩니다. |
+| **SaveImageWithText** | 이미지와 `.txt` 캡션 파일을 함께 저장합니다 (LoRA 학습 데이터셋 준비용). 출력 노드라 뒤에 연결이 없어도 실행됩니다. `name`을 주면 원본 파일 이름으로 저장하고 이미 있는 쌍은 건너뜁니다. |
+| **FilterFrequentTags** | 전체 캡션의 `threshold` 비율 이상에 나오는 태그를 지웁니다. 캐릭터의 고정 특징을 캡션 대신 트리거 워드에 학습시키기 위한 것입니다. 캡션 목록을 통째로 받습니다. |
+| **TrainSdxlLora** | ComfyUI 옆에 설치한 kohya sd-scripts(`<ComfyUI>/sd-scripts`, 자체 `.venv`)로 SDXL LoRA를 학습합니다. 모든 파일은 `output/train/<name>/<version>/` 아래에 둡니다. `train/`의 이미지와 `.txt` 캡션을 복사 없이 그대로 읽고, `mask/`가 있으면 masked loss를 켜고, 학습마다 같은 시각 이름의 폴더를 `checkpoints/`(LoRA 파일)와 `runs/` 아래에 만듭니다. |
 
 #### DownloadImage
 
@@ -237,6 +240,17 @@ ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중�
 | `image` | 로드된 이미지 텐서 |
 | `file_path` | 저장된 파일 경로 (output 기준 상대 경로) |
 
+#### LoadImagesFromDir
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `dir_path` | STRING | "" | ComfyUI output 폴더 기준 상대 경로 |
+
+| 출력 | 설명 |
+|------|------|
+| `images` | 파일마다 RGB 이미지 하나 (리스트), 파일 이름 오름차순. jpg / jpeg / png / webp |
+| `names` | 같은 순서의 파일 이름 (`SaveImageWithText.name`에 넣으면 이름이 유지됨) |
+
 #### SaveImageWithText
 
 | 파라미터 | 타입 | 기본값 | 설명 |
@@ -245,11 +259,75 @@ ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중�
 | `text` | STRING | (필수) | 동일 이름의 `.txt`로 저장될 캡션 |
 | `dir_path` | STRING | (필수) | 저장 디렉터리 (ComfyUI output 기준 상대 경로) |
 | `prefix` | STRING | "" | 파일명 접두사 (설정 시 자동 인덱스 부여) |
+| `name` | STRING | (선택) | 원본 파일 이름이나 경로. 번호 대신 그 stem으로 저장 (`raw/a.jpg` → `a.png` + `a.txt`) |
+| `overwrite` | BOOLEAN | False | `name`일 때 이미 있는 쌍을 다시 씀. 꺼져 있으면 있는 쌍은 그대로 두고 경로만 돌려줌 |
 
 | 출력 | 설명 |
 |------|------|
 | `image_path` | 저장된 `.png` 경로 |
 | `text_path` | 저장된 `.txt` 경로 |
+
+#### FilterFrequentTags
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `captions` | STRING (목록) | (필수) | 데이터셋의 전체 캡션, 이미지당 하나 |
+| `threshold` | FLOAT | 0.8 | 이 비율 이상의 캡션에 있는 태그를 지움 |
+| `fixed_tags` | STRING | "" | 지우지 않을 태그 (트리거 워드), 쉼표로 구분 |
+
+| 출력 | 설명 |
+|------|------|
+| `captions` | 자주 나온 태그를 뺀 캡션, 순서 그대로 |
+| `removed_tags` | `blue eyes(28/34), blonde hair(32/34)` 같은 한 줄 |
+
+#### TrainSdxlLora
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `name` | STRING | "my_lora" | 데이터셋과 LoRA 파일 이름. 데이터셋은 `output/train/<name>/<version>/train/`(이미지와 같은 이름의 `.txt` 캡션) |
+| `version` | STRING | "v1.0.0" | `output/train/<name>/` 아래의 데이터셋 버전 폴더 |
+| `ckpt_name` | COMBO | (필수) | `models/checkpoints`의 SDXL 체크포인트 |
+| `train_unit` / `train_length` | COMBO / INT | epochs / 20 | 학습 길이. `epochs`면 step = 에폭 × ceil(이미지 수 / 배치), `steps`면 그 값 그대로 |
+| `learning_rate` | FLOAT | 1.0 | UNet 학습률. `Prodigy`에선 배율(1.0 유지), AdamW 계열은 1e-4 정도 |
+| `network_type` | COMBO | LoRA | `LoRA` 또는 `LoKr`(Kronecker 곱, sd-scripts `networks.lokr`). rank, alpha, LoRA+, dropout은 둘 다 적용 |
+| `r` / `lora_alpha` | INT | 32 / 16 | LoRA rank와 alpha |
+| `loraplus_lr_ratio` | FLOAT | 0 | LoRA+: up 행렬 학습률을 down 행렬의 몇 배로 할지(논문은 4~16), 0이면 끔 |
+| `resolution` | INT | 1024 | 버킷 해상도 |
+| `batch_size` | INT | 1 | 배치 크기 |
+| `optim` | COMBO | Prodigy | `Prodigy`(step 크기 자동 추정, `safeguard_warmup`, `use_bias_correction`, weight decay 0.01, betas 0.9/0.99), `AdamWScheduleFree`, `AdamW8bit`, `AdamW` |
+| `lr_scheduler_type` | COMBO | cosine | `cosine` 또는 `constant` |
+| `warmup_ratio` | FLOAT | 0.05 | 총 step 대비 warmup 비율 |
+| `shuffle_caption` / `keep_tokens` | BOOLEAN / INT | True / 1 | step마다 태그를 섞되 앞 `keep_tokens`개는 고정 |
+| `gradient_checkpointing` | BOOLEAN | False | VRAM 절약, 속도 저하 |
+| `gradient_accumulation_steps` | INT | 1 | 배치 N개마다 한 번 갱신 (실효 배치 = N × 배치 크기) |
+| `network_dropout` | FLOAT | 0.0 | 과학습을 막는 LoRA 뉴런 dropout, 0이면 끔 |
+| `scale_weight_norms` | FLOAT | 0.0 | LoRA 가중치 norm이 이 값을 넘으면 줄임, 0이면 끔 |
+| `noise_offset` / `noise_offset_value` | BOOLEAN / FLOAT | True / 0.0357 | noise offset(토글과 값을 한 줄로 표시). 0.0357은 SDXL 베이스가 학습된 값, AnyIllustrious-XL은 끔 |
+| `seed` | INT | 42 | 학습 seed |
+| `save_steps` | INT | 200 | 중간 LoRA 저장 간격, 0이면 끔 |
+| `sample_steps` | INT | 200 | 샘플 이미지 간격, 0이면 끔 |
+| `logging_steps` | INT | 25 | loss 차트에 N step마다 점을 찍음 (마지막 step은 항상 찍음) |
+| `sample_prompts` | STRING (multiline) | `1girl, solo --n worst quality, low quality --w 832 --h 1216 --s 28 --l 5 --d 42` | 한 줄에 sd-scripts 샘플 프롬프트 하나, `#` 줄은 주석 |
+
+| 출력 | 설명 |
+|------|------|
+| `lora_path` | 최종 `.safetensors`, `output/train/<name>/<version>/checkpoints/<시각>/<name>.safetensors` (`save_steps` 중간본도 같은 폴더) |
+| `run_dir` | `output/train/<name>/<version>/runs/<시각>/`: TOML 설정, `sample/`(`step<step>_<시각>_<프롬프트 줄>.png`), `logs/` |
+
+학습 설정에 항상 들어가는 값: `min_snr_gamma = 5`, `mixed_precision = "bf16"`, `cache_latents`, `sdpa`, UNet만 학습.
+
+`output/train/<name>/<version>/` 아래 폴더:
+
+| 폴더 | 역할 |
+|------|------|
+| `train/` | 이미지와 같은 이름의 `.txt` 캡션. 복사 없이 그대로 읽음 |
+| `mask/` | 선택. 이미지와 같은 이름의 마스크(흰색 = 학습, 검정 = 무시). 폴더가 있으면 sd-scripts `masked_loss`로 R 채널을 손실 가중치로 씀 |
+| `checkpoints/` | 학습마다 `<시각>/` 폴더 하나, 그 안에 LoRA 파일 |
+| `runs/` | 학습마다 같은 `<시각>/` 폴더: TOML 설정, `sample/`, `logs/` |
+
+loss 차트 위에 노드가 실제로 쓸 `output_dir`과 `mask_dir`을 보여 주며(값을 바꾸면 바로 갱신), 학습이 시작되면 `model_dir`(`checkpoints/<시각>`)과 이미지 수로 계산한 총 step도 표시합니다. 학습 중에는 노드 아래에 `avr_loss` 곡선이 실시간으로 그려집니다 (sd-scripts 로그의 step·loss).
+
+항상 켜짐: bf16, sdpa, latent 캐시, UNet만 학습, 버킷, TensorBoard 로깅(`<sd-scripts>/.venv/bin/tensorboard --logdir output/train/<name>/<version>/runs`). 노드는 sd-scripts가 끝날 때까지 기다리며 로그를 `[sd-scripts]` 접두어로 콘솔에 보여 줍니다.
 
 ---
 
