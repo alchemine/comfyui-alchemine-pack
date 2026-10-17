@@ -2,7 +2,13 @@
 
 from .nodes.everywhere import AnythingEverywhereExtended
 from .nodes.flow_control import LazyExecution
-from .nodes.lora import DownloadImage, SaveImageWithText
+from .nodes.lora import (
+    DownloadImage,
+    LoadImagesFromDir,
+    SaveImageWithText,
+    FilterFrequentTags,
+    TrainSdxlLora,
+)
 from .nodes.model import CachedLoraTagLoader
 from .nodes.prompt import (
     ProcessTags,
@@ -29,7 +35,10 @@ NODE_CLASS_MAPPINGS = {
     "LazyExecution": LazyExecution,
     # AlcheminePack/Lora #############################################################
     "DownloadImage": DownloadImage,
+    "LoadImagesFromDir": LoadImagesFromDir,
     "SaveImageWithText": SaveImageWithText,
+    "FilterFrequentTags": FilterFrequentTags,
+    "TrainSdxlLora": TrainSdxlLora,
     # AlcheminePack/Model ############################################################
     "CachedLoraTagLoader": CachedLoraTagLoader,
     # AlcheminePack/Prompt #############################################################
@@ -57,7 +66,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LazyExecution": "Lazy Execution",
     # AlcheminePack/Lora #############################################################
     "DownloadImage": "Download Image",
+    "LoadImagesFromDir": "Load Images From Dir",
     "SaveImageWithText": "Save Image With Text",
+    "FilterFrequentTags": "Filter Frequent Tags",
+    "TrainSdxlLora": "Train SDXL LoRA",
     # AlcheminePack/Model ############################################################
     "CachedLoraTagLoader": "Cached Load LoRA Tag",
     # AlcheminePack/Prompt #############################################################

@@ -224,7 +224,10 @@ syntax is resolved.
 | Node | Description |
 |------|-------------|
 | **DownloadImage** | Downloads an image from a URL into the ComfyUI output directory. |
-| **SaveImageWithText** | Saves an image alongside a `.txt` caption file (for LoRA training dataset preparation). |
+| **LoadImagesFromDir** | Loads every image of a folder under the ComfyUI output directory as a list, with the file names, so a dataset folder can be addressed by the same relative path as `SaveImageWithText` and the downloader nodes. Re-runs when the folder's files change. |
+| **SaveImageWithText** | Saves an image alongside a `.txt` caption file (for LoRA training dataset preparation). Output node: runs even when nothing is connected downstream. With `name` it keeps the source file name and skips pairs that already exist. |
+| **FilterFrequentTags** | Drops the tags that appear in at least `threshold` of all captions, so the subject's constant traits are learned into the trigger word instead of the captions. Takes the whole caption list at once. |
+| **TrainSdxlLora** | Trains an SDXL LoRA with kohya sd-scripts installed next to ComfyUI (`<ComfyUI>/sd-scripts` with its own `.venv`). Everything lives under `output/train/<name>/<version>/`: `train/` images and `.txt` captions are read in place, `mask/` (if present) turns on masked loss, each training gets a timestamp folder under both `checkpoints/` (LoRA files) and `runs/`. |
 
 #### DownloadImage
 
@@ -238,6 +241,17 @@ syntax is resolved.
 | `image` | Loaded image tensor |
 | `file_path` | Path of the saved file (relative to output dir) |
 
+#### LoadImagesFromDir
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `dir_path` | STRING | "" | Folder relative to the ComfyUI output directory |
+
+| Output | Description |
+|--------|-------------|
+| `images` | One RGB image per file (list), file names in ascending order; jpg / jpeg / png / webp |
+| `names` | The file names, same order (feed `SaveImageWithText.name` to keep them) |
+
 #### SaveImageWithText
 
 | Parameter | Type | Default | Description |
@@ -246,11 +260,75 @@ syntax is resolved.
 | `text` | STRING | (required) | Caption text saved as a sibling `.txt` |
 | `dir_path` | STRING | (required) | Destination directory (relative to ComfyUI output) |
 | `prefix` | STRING | "" | Filename prefix; auto-increments index when set |
+| `name` | STRING | (optional) | Source file name or path; its stem names the saved pair (`raw/a.jpg` → `a.png` + `a.txt`) instead of a running number |
+| `overwrite` | BOOLEAN | False | With `name`: rewrite an existing pair. Off, an existing pair is kept and its paths returned |
 
 | Output | Description |
 |--------|-------------|
 | `image_path` | Path of the saved `.png` |
 | `text_path` | Path of the saved `.txt` |
+
+#### FilterFrequentTags
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `captions` | STRING (list) | (required) | All captions of the dataset, one per image |
+| `threshold` | FLOAT | 0.8 | A tag found in this share of the captions or more is removed |
+| `fixed_tags` | STRING | "" | Comma-separated tags never removed (the trigger word) |
+
+| Output | Description |
+|--------|-------------|
+| `captions` | The captions with the frequent tags removed, same order |
+| `removed_tags` | One line like `blue eyes(28/34), blonde hair(32/34)` |
+
+#### TrainSdxlLora
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | STRING | "my_lora" | Dataset and LoRA file name; the dataset is `output/train/<name>/<version>/train/` (images with same-name `.txt` captions) |
+| `version` | STRING | "v1.0.0" | Dataset version folder under `output/train/<name>/` |
+| `ckpt_name` | COMBO | (required) | SDXL checkpoint from `models/checkpoints` |
+| `train_unit` / `train_length` | COMBO / INT | epochs / 20 | How long to train: `epochs` (steps = epochs × ceil(images / batch size)) or `steps` as given |
+| `learning_rate` | FLOAT | 1.0 | UNet learning rate; a multiplier for `Prodigy` (keep 1.0), about 1e-4 for the AdamW optimizers |
+| `network_type` | COMBO | LoRA | `LoRA` or `LoKr` (Kronecker product, sd-scripts `networks.lokr`); rank, alpha, LoRA+ and dropout apply to both |
+| `r` / `lora_alpha` | INT | 32 / 16 | LoRA rank and alpha |
+| `loraplus_lr_ratio` | FLOAT | 0 | LoRA+: learning rate of the up matrices as a multiple of the down matrices (4-16 in the paper), 0 to disable |
+| `resolution` | INT | 1024 | Bucket resolution |
+| `batch_size` | INT | 1 | Batch size |
+| `optim` | COMBO | Prodigy | `Prodigy` (adaptive step size, `safeguard_warmup`, `use_bias_correction`, weight decay 0.01, betas 0.9/0.99), `AdamWScheduleFree`, `AdamW8bit`, `AdamW` |
+| `lr_scheduler_type` | COMBO | cosine | `cosine` or `constant` |
+| `warmup_ratio` | FLOAT | 0.05 | Warmup steps as a share of the total steps |
+| `shuffle_caption` / `keep_tokens` | BOOLEAN / INT | True / 1 | Shuffle tags each step, keeping the first `keep_tokens` in place |
+| `gradient_checkpointing` | BOOLEAN | False | Lower VRAM, slower |
+| `gradient_accumulation_steps` | INT | 1 | Optimizer steps are taken every N batches (effective batch = N × batch size) |
+| `network_dropout` | FLOAT | 0.0 | LoRA neuron dropout against overfitting, 0 to disable |
+| `scale_weight_norms` | FLOAT | 0.0 | Scale LoRA weights back when their norm exceeds this, 0 to disable |
+| `noise_offset` / `noise_offset_value` | BOOLEAN / FLOAT | True / 0.0357 | Noise offset (drawn as one row: toggle and value). 0.0357 is what the SDXL base was trained with; switch it off for AnyIllustrious-XL |
+| `seed` | INT | 42 | Training seed |
+| `save_steps` | INT | 200 | Intermediate LoRA files, 0 to disable |
+| `sample_steps` | INT | 200 | Sample images, 0 to disable |
+| `logging_steps` | INT | 25 | Send a point to the loss chart every N steps (the last step is always sent) |
+| `sample_prompts` | STRING (multiline) | `1girl, solo --n worst quality, low quality --w 832 --h 1216 --s 28 --l 5 --d 42` | One sd-scripts sample prompt per line; `#` lines are comments |
+
+| Output | Description |
+|--------|-------------|
+| `lora_path` | The final `.safetensors`, `output/train/<name>/<version>/checkpoints/<timestamp>/<name>.safetensors` (snapshots from `save_steps` sit next to it) |
+| `run_dir` | `output/train/<name>/<version>/runs/<timestamp>/`: TOML configs, `sample/` (`step<step>_<timestamp>_<prompt line>.png`), `logs/` |
+
+Always set in the training config: `min_snr_gamma = 5`, `mixed_precision = "bf16"`, `cache_latents`, `sdpa`, UNet-only training.
+
+Layout under `output/train/<name>/<version>/`:
+
+| Folder | Role |
+|--------|------|
+| `train/` | Images with same-name `.txt` captions, read in place |
+| `mask/` | Optional same-name mask images (white = train, black = ignore); when the folder exists, sd-scripts `masked_loss` weights the loss by the mask's R channel |
+| `checkpoints/` | One `<timestamp>/` folder per training with its LoRA files |
+| `runs/` | The same `<timestamp>/` per training: TOML configs, `sample/`, `logs/` |
+
+Above the loss chart the node shows the `output_dir` and `mask_dir` it will use, updated as you type, and, once a training starts, the `model_dir` (`checkpoints/<timestamp>`) and the step count computed from the image count. While training runs, the node draws a live `avr_loss` chart (step and loss from the sd-scripts log).
+
+Always on: bf16, sdpa, cached latents, UNet only, buckets, TensorBoard logging (`<sd-scripts>/.venv/bin/tensorboard --logdir output/train/<name>/<version>/runs`). The node waits for sd-scripts and streams its log to the console with a `[sd-scripts]` prefix.
 
 ---
 
