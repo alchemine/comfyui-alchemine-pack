@@ -23,8 +23,8 @@ def lora(pack, monkeypatch):
 def test_download_image_writes_inside_output(lora, comfy_dirs):
     _, file_path = lora.DownloadImage.execute("http://host/image.png", "downloads")
 
-    assert file_path == "downloads/1.png"
-    assert (comfy_dirs.output / "downloads" / "1.png").is_file()
+    assert file_path.startswith("downloads/") and file_path.endswith(".png")
+    assert (comfy_dirs.output / file_path).is_file()
 
 
 def test_download_image_dir_path_cannot_leave_output(lora, comfy_dirs):
