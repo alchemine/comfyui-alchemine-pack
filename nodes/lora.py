@@ -125,10 +125,6 @@ class SaveImageWithText(BaseLora):
         if name:
             prefix_path = dir_path / Path(name).stem
             ensure_inside(dir_path, prefix_path)
-            text_path = prefix_path.with_suffix(".txt")
-            image_path = prefix_path.with_suffix(".png")
-            if not overwrite and text_path.exists() and image_path.exists():
-                return (relpath(image_path, output_dir), relpath(text_path, output_dir))
         elif prefix:
             ensure_inside(output_dir, dir_path / prefix)
             idx = 1 + len(list(dir_path.glob(f"{prefix}_*.*"))) // 2
@@ -140,9 +136,11 @@ class SaveImageWithText(BaseLora):
             }
             idx = 1 + max(idxs) if idxs else 1
             prefix_path = dir_path / f"{idx}"
-        if not name:
-            text_path = prefix_path.with_suffix(".txt")
-            image_path = prefix_path.with_suffix(".png")
+        # Append instead of with_suffix: a stem like "a.000Z_1" has a dot of its own.
+        text_path = dir_path / f"{prefix_path.name}.txt"
+        image_path = dir_path / f"{prefix_path.name}.png"
+        if name and not overwrite and text_path.exists() and image_path.exists():
+            return (relpath(image_path, output_dir), relpath(text_path, output_dir))
 
         # Save text
         with open(text_path, "w") as f:
@@ -171,7 +169,26 @@ class LoadImagesFromDir(BaseLora):
                     "tooltip": "Folder relative to the ComfyUI output directory.",
                 },
             ),
-        }
+        },
+        "optional": {
+            "count": (
+                "INT",
+                {
+                    "default": 0,
+                    "min": 0,
+                    "tooltip": "Images per run. 0 loads the whole folder.",
+                },
+            ),
+            "chunk": (
+                "INT",
+                {
+                    "default": 0,
+                    "min": 0,
+                    "control_after_generate": True,
+                    "tooltip": "With count: which group of count images to load (0 = the first). Set it to increment and queue the workflow once per group.",
+                },
+            ),
+        },
     }
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("images", "names")
@@ -193,9 +210,16 @@ class LoadImagesFromDir(BaseLora):
         )
 
     @classmethod
-    def execute(cls, dir_path: str) -> tuple[list[torch.Tensor], list[str]]:
+    def chunk_paths(cls, dir_path: str, count: int, chunk: int) -> list[Path]:
+        paths = cls.image_paths(dir_path)
+        return paths[chunk * count : (chunk + 1) * count] if count else paths
+
+    @classmethod
+    def execute(
+        cls, dir_path: str, count: int = 0, chunk: int = 0
+    ) -> tuple[list[torch.Tensor], list[str]]:
         images, names = [], []
-        for path in cls.image_paths(dir_path):
+        for path in cls.chunk_paths(dir_path, count, chunk):
             image = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
             images.append(
                 torch.from_numpy(np.array(image).astype(np.float32) / 255.0)[None]
@@ -204,10 +228,12 @@ class LoadImagesFromDir(BaseLora):
         return (images, names)
 
     @classmethod
-    def IS_CHANGED(cls, dir_path: str) -> tuple:
+    def IS_CHANGED(cls, dir_path: str, count: int = 0, chunk: int = 0) -> tuple:
         # The folder is usually filled by an upstream node (e.g. a downloader) in
         # the same run, so the node re-runs whenever its files change.
-        return tuple((p.name, p.stat().st_mtime) for p in cls.image_paths(dir_path))
+        return tuple(
+            (p.name, p.stat().st_mtime) for p in cls.chunk_paths(dir_path, count, chunk)
+        )
 
 
 class FilterFrequentTags(BaseLora):
