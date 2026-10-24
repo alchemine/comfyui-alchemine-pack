@@ -246,6 +246,8 @@ syntax is resolved.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `dir_path` | STRING | "" | Folder relative to the ComfyUI output directory |
+| `count` | INT | 0 | Images per run; 0 loads the whole folder |
+| `chunk` | INT | 0 | With `count`, which group of `count` images to load (0 = the first). Set it to increment and queue once per group |
 
 | Output | Description |
 |--------|-------------|
