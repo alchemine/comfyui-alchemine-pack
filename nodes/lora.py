@@ -2,12 +2,14 @@
 
 import os
 import math
+import hashlib
 import re
 import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
 from os.path import exists, relpath
+from urllib.parse import urlparse
 
 import torch
 import requests
@@ -49,14 +51,14 @@ class DownloadImage(BaseLora):
     @classmethod
     def execute(cls, url: str, dir_path: str) -> tuple:
         output_dir = Path(folder_paths.get_output_directory())
-        dir_path = output_dir / dir_path
-        ensure_inside(output_dir, dir_path)
-        if not exists(dir_path):
-            os.makedirs(dir_path)
+        folder = output_dir / dir_path
+        ensure_inside(output_dir, folder)
+        if not exists(folder):
+            os.makedirs(folder)
 
-        extension = url.split(".")[-1]
-        idx = 1 + len(os.listdir(dir_path))
-        file_path = dir_path / f"{idx}.{extension}"
+        # Named by the URL so a URL is downloaded once and never mistaken for another.
+        stem = hashlib.sha256(url.encode()).hexdigest()[:16]
+        file_path = folder / (stem + Path(urlparse(url).path).suffix)
         if not exists(file_path):
             response = _session.get(url)
             response.raise_for_status()
@@ -67,10 +69,6 @@ class DownloadImage(BaseLora):
         image_tensor = torch.from_numpy(np.array(pil_image)).float() / 255.0
         image = image_tensor.unsqueeze(0)
         return (image, relpath(file_path, output_dir))
-
-    @classmethod
-    def IS_CHANGED(cls, url: str, dir_path: str) -> str:
-        return url, dir_path
 
 
 class SaveImageWithText(BaseLora):
@@ -115,30 +113,30 @@ class SaveImageWithText(BaseLora):
         prefix: str = "",
         name: str = "",
         overwrite: bool = False,
-    ) -> tuple[str]:
+    ) -> tuple[str, str]:
         output_dir = Path(folder_paths.get_output_directory())
-        dir_path = output_dir / dir_path
-        ensure_inside(output_dir, dir_path)
-        if not exists(dir_path):
-            os.makedirs(dir_path)
+        folder = output_dir / dir_path
+        ensure_inside(output_dir, folder)
+        if not exists(folder):
+            os.makedirs(folder)
 
         if name:
-            prefix_path = dir_path / Path(name).stem
-            ensure_inside(dir_path, prefix_path)
+            prefix_path = folder / Path(name).stem
+            ensure_inside(folder, prefix_path)
         elif prefix:
-            ensure_inside(output_dir, dir_path / prefix)
-            idx = 1 + len(list(dir_path.glob(f"{prefix}_*.*"))) // 2
-            prefix_path = dir_path / f"{prefix}_{idx}"
+            ensure_inside(output_dir, folder / prefix)
+            idx = 1 + len(list(folder.glob(f"{prefix}_*.*"))) // 2
+            prefix_path = folder / f"{prefix}_{idx}"
         else:
             idxs = {
-                int(n.relative_to(dir_path).stem.split("_")[0])
-                for n in dir_path.glob("[0-9]*")
+                int(n.relative_to(folder).stem.split("_")[0])
+                for n in folder.glob("[0-9]*")
             }
             idx = 1 + max(idxs) if idxs else 1
-            prefix_path = dir_path / f"{idx}"
+            prefix_path = folder / f"{idx}"
         # Append instead of with_suffix: a stem like "a.000Z_1" has a dot of its own.
-        text_path = dir_path / f"{prefix_path.name}.txt"
-        image_path = dir_path / f"{prefix_path.name}.png"
+        text_path = folder / f"{prefix_path.name}.txt"
+        image_path = folder / f"{prefix_path.name}.png"
         if name and not overwrite and text_path.exists() and image_path.exists():
             return (relpath(image_path, output_dir), relpath(text_path, output_dir))
 
@@ -201,13 +199,11 @@ class LoadImagesFromDir(BaseLora):
     @classmethod
     def image_paths(cls, dir_path: str) -> list[Path]:
         output_dir = Path(folder_paths.get_output_directory())
-        dir_path = output_dir / dir_path
-        ensure_inside(output_dir, dir_path)
-        if not dir_path.is_dir():
+        folder = output_dir / dir_path
+        ensure_inside(output_dir, folder)
+        if not folder.is_dir():
             return []
-        return sorted(
-            p for p in dir_path.iterdir() if p.suffix.lower() in cls.EXTENSIONS
-        )
+        return sorted(p for p in folder.iterdir() if p.suffix.lower() in cls.EXTENSIONS)
 
     @classmethod
     def chunk_paths(cls, dir_path: str, count: int, chunk: int) -> list[Path]:
@@ -268,13 +264,15 @@ class FilterFrequentTags(BaseLora):
 
     @classmethod
     def execute(
-        cls, captions: list[str], threshold: list[float], fixed_tags: list[str] = None
+        cls,
+        captions: list[str],
+        threshold: list[float],
+        fixed_tags: list[str] | None = None,
     ) -> tuple:
-        threshold = threshold[0]
         fixed = set(cls.split(fixed_tags[0])) if fixed_tags else set()
         tag_lists = [cls.split(c) for c in captions]
         counts = Counter(t for tags in tag_lists for t in set(tags))
-        limit = threshold * len(tag_lists)
+        limit = threshold[0] * len(tag_lists)
         removed = {t: n for t, n in counts.items() if n >= limit and t not in fixed}
         filtered = [
             ", ".join(t for t in tags if t not in removed) for tags in tag_lists
@@ -576,7 +574,7 @@ class TrainSdxlLora(BaseLora):
             cwd=sd_scripts_path,
             env=env,
         ) as proc:
-            for line in proc.stdout:
+            for line in proc.stdout:  # type: ignore[union-attr]  # stdout=PIPE
                 line = line.rstrip()
                 if not line:
                     continue
