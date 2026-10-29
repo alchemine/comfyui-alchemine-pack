@@ -49,7 +49,8 @@ export function drawLossChart(canvas, points, total) {
 // Two settings that INPUT_TYPES can only express as two widgets each are drawn
 // as one row, the way comfyui-generator-pack draws its category rows:
 //   noise_offset:  [toggle] noise_offset                   0.0357
-//   train_length:  [epochs][steps]                             22
+//   train_length:  [epochs][steps] training length             22
+//   save_steps:    [epochs][steps] save interval             200 (sample, log alike)
 // The real widgets stay in node.widgets (the first one hidden, the value one
 // replaced by the row under the same name), so saving and the prompt the
 // backend receives are untouched. The value is typed in by clicking it.
@@ -137,7 +138,7 @@ function makeRow(node, valueWidget, spec) {
         ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR || "#999";
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        if (spec.name !== "") ctx.fillText(valueWidget.name, x, midY);
+        ctx.fillText(spec.name ?? valueWidget.name, x, midY);
         ctx.fillStyle = LiteGraph.WIDGET_TEXT_COLOR;
         ctx.textAlign = "right";
         ctx.fillText(spec.label(valueWidget.value), node.size[0] - margin - 12, midY);
@@ -187,8 +188,17 @@ function addRows(node) {
         onLeft: (index) => { unit.value = unit.options.values[index]; },
         label: (v) => String(Math.round(v)),
         inert: () => false,
-        name: "",  // the pills already say what the number is
+        name: "training length",
     }));
+    for (const [key, label] of [["save", "save"], ["sample", "sample"], ["logging", "log"]]) {
+        mergeRow(node, `${key}_unit`, `${key}_steps`, (unit) => ({
+            drawLeft: (ctx, x, y, h) => drawChoices(ctx, x, y, h, unit.options.values, unit.value),
+            onLeft: (index) => { unit.value = unit.options.values[index]; },
+            label: (v) => String(Math.round(v)),
+            inert: () => false,
+            name: `${label} interval`,
+        }));
+    }
     node.setSize(node.computeSize());
 }
 

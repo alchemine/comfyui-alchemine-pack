@@ -307,9 +307,9 @@ syntax is resolved.
 | `scale_weight_norms` | FLOAT | 0.0 | Scale LoRA weights back when their norm exceeds this, 0 to disable |
 | `noise_offset` / `noise_offset_value` | BOOLEAN / FLOAT | True / 0.0357 | Noise offset (drawn as one row: toggle and value). 0.0357 is what the SDXL base was trained with; switch it off for AnyIllustrious-XL |
 | `seed` | INT | 42 | Training seed |
-| `save_steps` | INT | 200 | Intermediate LoRA files, 0 to disable |
-| `sample_steps` | INT | 200 | Sample images, 0 to disable |
-| `logging_steps` | INT | 25 | Send a point to the loss chart every N steps (the last step is always sent) |
+| `save_unit` / `save_steps` | COMBO / INT | steps / 200 | Intermediate LoRA files every that many `epochs` or `steps`, 0 to disable |
+| `sample_unit` / `sample_steps` | COMBO / INT | steps / 200 | Sample images every that many `epochs` or `steps`, 0 to disable |
+| `logging_unit` / `logging_steps` | COMBO / INT | steps / 25 | Send a point to the loss chart every N `epochs` or `steps` (the last step is always sent) |
 | `sample_prompts` | STRING (multiline) | `1girl, solo --n worst quality, low quality --w 832 --h 1216 --s 28 --l 5 --d 42` | One sd-scripts sample prompt per line; `#` lines are comments |
 
 | Output | Description |
