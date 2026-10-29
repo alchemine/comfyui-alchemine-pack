@@ -466,6 +466,12 @@ class TrainSdxlLora(BaseLora):
                 {"default": SAMPLE_PROMPT, "multiline": True},
             ),
         },
+        # Optional and last, so workflows and prompts made before them keep counting in steps.
+        "optional": {
+            "save_unit": (["epochs", "steps"], {"default": "steps"}),
+            "sample_unit": (["epochs", "steps"], {"default": "steps"}),
+            "logging_unit": (["epochs", "steps"], {"default": "steps"}),
+        },
         "hidden": {"unique_id": "UNIQUE_ID"},
     }
     RETURN_TYPES = ("STRING", "STRING")
@@ -498,6 +504,11 @@ class TrainSdxlLora(BaseLora):
         batches = math.ceil(images / params["batch_size"])
         train_unit, train_length = params.pop("train_unit"), params.pop("train_length")
         max_steps = train_length * batches if train_unit == "epochs" else train_length
+        for key in ("save", "sample"):
+            if params.pop(f"{key}_unit", "steps") == "epochs":
+                params[f"{key}_steps"] *= batches
+        if params.pop("logging_unit", "steps") == "epochs":
+            logging_steps *= batches
         ckpt_path = folder_paths.get_full_path("checkpoints", ckpt_name)
         if not ckpt_path:
             raise FileNotFoundError(f"checkpoint not found: {ckpt_name}")

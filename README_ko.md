@@ -306,9 +306,9 @@ ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중�
 | `scale_weight_norms` | FLOAT | 0.0 | LoRA 가중치 norm이 이 값을 넘으면 줄임, 0이면 끔 |
 | `noise_offset` / `noise_offset_value` | BOOLEAN / FLOAT | True / 0.0357 | noise offset(토글과 값을 한 줄로 표시). 0.0357은 SDXL 베이스가 학습된 값, AnyIllustrious-XL은 끔 |
 | `seed` | INT | 42 | 학습 seed |
-| `save_steps` | INT | 200 | 중간 LoRA 저장 간격, 0이면 끔 |
-| `sample_steps` | INT | 200 | 샘플 이미지 간격, 0이면 끔 |
-| `logging_steps` | INT | 25 | loss 차트에 N step마다 점을 찍음 (마지막 step은 항상 찍음) |
+| `save_unit` / `save_steps` | COMBO / INT | steps / 200 | 중간 LoRA 저장 간격. `epochs`나 `steps` 단위, 0이면 끔 |
+| `sample_unit` / `sample_steps` | COMBO / INT | steps / 200 | 샘플 이미지 간격. `epochs`나 `steps` 단위, 0이면 끔 |
+| `logging_unit` / `logging_steps` | COMBO / INT | steps / 25 | loss 차트에 N `epochs`나 `steps`마다 점을 찍음 (마지막 step은 항상 찍음) |
 | `sample_prompts` | STRING (multiline) | `1girl, solo --n worst quality, low quality --w 832 --h 1216 --s 28 --l 5 --d 42` | 한 줄에 sd-scripts 샘플 프롬프트 하나, `#` 줄은 주석 |
 
 | 출력 | 설명 |
