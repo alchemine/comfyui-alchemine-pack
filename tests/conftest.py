@@ -31,6 +31,11 @@ def pack(comfy_dirs):
     folder_paths.get_user_directory = lambda: str(comfy_dirs.user)
     sys.modules["folder_paths"] = folder_paths
 
+    cli_args = types.ModuleType("comfy.cli_args")
+    cli_args.args = types.SimpleNamespace(disable_metadata=False)
+    sys.modules["comfy"] = types.ModuleType("comfy")
+    sys.modules["comfy.cli_args"] = cli_args
+
     graph = types.ModuleType("comfy_execution.graph")
     graph.ExecutionBlocker = type("ExecutionBlocker", (), {})
     server = types.ModuleType("server")

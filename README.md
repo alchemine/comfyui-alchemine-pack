@@ -219,6 +219,27 @@ syntax is resolved.
 
 ---
 
+### Image Nodes (`AlcheminePack/Image`)
+
+| Node | Description |
+|------|-------------|
+| **FastImageSave** | Saves images as JPEG with the workflow embedded. Drop a saved file on the canvas to load its workflow. |
+
+#### FastImageSave
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `images` | IMAGE | (required) | Images to save, at quality 95 |
+| `filename_prefix` | STRING | `ComfyUI` | File name prefix under the output directory. Accepts subfolders and variables such as `%date:yyyy-MM-dd%/image` |
+
+| Output | Description |
+|--------|-------------|
+| `images` | The `images` input, forwarded unchanged |
+
+Only this pack reads the embedded workflow: other tools show it as an ordinary JPEG.
+
+---
+
 ### Lora Nodes (`AlcheminePack/Lora`) *(Experimental)*
 
 | Node | Description |
