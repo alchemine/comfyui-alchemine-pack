@@ -2,6 +2,7 @@
 
 from .nodes.everywhere import AnythingEverywhereExtended
 from .nodes.flow_control import LazyExecution
+from .nodes.save_image import FastImageSave
 from .nodes.lora import (
     DownloadImage,
     LoadImagesFromDir,
@@ -33,6 +34,8 @@ NODE_CLASS_MAPPINGS = {
     "Anything Everywhere Extended": AnythingEverywhereExtended,
     # AlcheminePack/FlowControl ######################################################
     "LazyExecution": LazyExecution,
+    # AlcheminePack/Image ############################################################
+    "FastImageSave": FastImageSave,
     # AlcheminePack/Lora #############################################################
     "DownloadImage": DownloadImage,
     "LoadImagesFromDir": LoadImagesFromDir,
@@ -64,6 +67,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Anything Everywhere Extended": "Everywhere",
     # AlcheminePack/FlowControl ######################################################
     "LazyExecution": "Lazy Execution",
+    # AlcheminePack/Image ############################################################
+    "FastImageSave": "Fast Image Save",
     # AlcheminePack/Lora #############################################################
     "DownloadImage": "Download Image",
     "LoadImagesFromDir": "Load Images From Dir",
