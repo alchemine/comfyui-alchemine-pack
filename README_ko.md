@@ -218,6 +218,27 @@ ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중�
 
 ---
 
+### 이미지 노드 (`AlcheminePack/Image`)
+
+| 노드 | 설명 |
+|------|------|
+| **FastImageSave** | 이미지를 워크플로가 포함된 JPEG로 저장합니다. 저장한 파일을 캔버스에 끌어다 놓으면 워크플로를 불러옵니다. |
+
+#### FastImageSave
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `images` | IMAGE | (필수) | 저장할 이미지 (품질 95) |
+| `filename_prefix` | STRING | `ComfyUI` | output 폴더 아래의 파일 이름 접두사. 하위 폴더와 `%date:yyyy-MM-dd%/image` 같은 변수를 쓸 수 있습니다 |
+
+| 출력 | 설명 |
+|------|------|
+| `images` | 입력 `images`를 그대로 전달 |
+
+포함된 워크플로는 이 팩에서만 읽습니다. 다른 도구에서는 일반 JPEG로 보입니다.
+
+---
+
 ### Lora 노드 (`AlcheminePack/Lora`) *(실험적)*
 
 | 노드 | 설명 |
