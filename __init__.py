@@ -2,6 +2,7 @@
 
 from .nodes.everywhere import AnythingEverywhereExtended
 from .nodes.flow_control import LazyExecution
+from .nodes.latent import LatentWithSeed
 from .nodes.save_image import FastImageSave
 from .nodes.lora import (
     DownloadImage,
@@ -36,6 +37,8 @@ NODE_CLASS_MAPPINGS = {
     "LazyExecution": LazyExecution,
     # AlcheminePack/Image ############################################################
     "FastImageSave": FastImageSave,
+    # AlcheminePack/Latent ###########################################################
+    "LatentWithSeed": LatentWithSeed,
     # AlcheminePack/Lora #############################################################
     "DownloadImage": DownloadImage,
     "LoadImagesFromDir": LoadImagesFromDir,
@@ -69,6 +72,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LazyExecution": "Lazy Execution",
     # AlcheminePack/Image ############################################################
     "FastImageSave": "Fast Image Save",
+    # AlcheminePack/Latent ###########################################################
+    "LatentWithSeed": "Latent With Seed",
     # AlcheminePack/Lora #############################################################
     "DownloadImage": "Download Image",
     "LoadImagesFromDir": "Load Images From Dir",
