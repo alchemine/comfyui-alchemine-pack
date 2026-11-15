@@ -240,6 +240,31 @@ Only this pack reads the embedded workflow: other tools show it as an ordinary J
 
 ---
 
+### Latent Nodes (`AlcheminePack/Latent`)
+
+| Node | Description |
+|------|-------------|
+| **Latent With Seed** | Creates empty latents as a list of single images, each paired with its own seed. |
+
+#### Latent With Seed
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `seed` | INT | `0` | Seed of the first latent |
+| `dimensions` | COMBO | `1024 x 1024 (1:1)` | Image size before `scale_by` |
+| `invert` | BOOLEAN | `false` | Swap width and height |
+| `batch_size` | INT | `1` | Number of latents |
+| `scale_by` | FLOAT | `1.0` | Size multiplier per axis |
+
+| Output | Description |
+|--------|-------------|
+| `LATENT` | List of `batch_size` empty latents |
+| `seed` | List of seeds: `seed`, `seed + 1`, ... |
+
+Sampling each latent with its seed gives the same image as the same position in a single batch would.
+
+---
+
 ### Lora Nodes (`AlcheminePack/Lora`) *(Experimental)*
 
 | Node | Description |

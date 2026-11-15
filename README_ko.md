@@ -239,6 +239,31 @@ ComfyUI 기본 텍스트 위젯은 `dynamicPrompts`가 켜져 있어 입력 중�
 
 ---
 
+### Latent 노드 (`AlcheminePack/Latent`)
+
+| 노드 | 설명 |
+|------|------|
+| **Latent With Seed** | 빈 latent를 한 장씩 나눈 리스트로 만들고, 각각에 seed를 붙입니다. |
+
+#### Latent With Seed
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `seed` | INT | `0` | 첫 latent의 seed |
+| `dimensions` | COMBO | `1024 x 1024 (1:1)` | `scale_by`를 곱하기 전 이미지 크기 |
+| `invert` | BOOLEAN | `false` | 가로와 세로를 바꿈 |
+| `batch_size` | INT | `1` | latent 개수 |
+| `scale_by` | FLOAT | `1.0` | 축마다 곱하는 크기 배율 |
+
+| 출력 | 설명 |
+|------|------|
+| `LATENT` | 빈 latent `batch_size`개의 리스트 |
+| `seed` | seed 리스트: `seed`, `seed + 1`, ... |
+
+각 latent를 짝지어진 seed로 샘플링하면, 한 배치로 돌렸을 때 같은 자리의 이미지와 같은 결과가 나옵니다.
+
+---
+
 ### Lora 노드 (`AlcheminePack/Lora`) *(실험적)*
 
 | 노드 | 설명 |
